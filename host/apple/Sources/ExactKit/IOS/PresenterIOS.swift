@@ -7,7 +7,7 @@ import CoreText
 import os
 package final class Presenter {
     var documentLanguage = ""
-    var documentDirection = "ltr"
+    package var documentDirection = "ltr"
     // A disabled signposter still allocates interval state; callers check its log first.
     static let signpostLog = OSLog(subsystem: "com.exact.host", category: .dynamicTracing)
     static let signposts = OSSignposter(logHandle: signpostLog)
