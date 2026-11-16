@@ -522,6 +522,11 @@ final class ContextMenuHost: NSObject, UIContextMenuInteractionDelegate, UIEditM
         if source.placedAncestor?.placement != nil { return Self.placedPreview(of: shown, in: source) }
         let parameters = UIPreviewParameters()
         parameters.visiblePath = LiftTarget.rounded(shown)
+        // The lifted node draws without its own fill, so the preview's ground is that
+        // fill (a chat bubble keeps its colour) instead of UIKit's white.
+        if shown === source, let fill = source.cgColor("background_color"), fill.alpha > 0 {
+            parameters.backgroundColor = UIColor(cgColor: fill)
+        }
         guard let target = LiftTarget.target(shown) else { return nil }
         return UITargetedPreview(view: shown, parameters: parameters, target: target)
     }
