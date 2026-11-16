@@ -346,3 +346,15 @@ export function withAuthCallbacks(fragment, callbacks = []) {
   const app = onMainActivity(fragment, filters, [`        <meta-data android:name="dev.exact.auth.callbacks" android:value="${escape(JSON.stringify(endpoints))}" />`]);
   return `${app}\n    <queries>\n        <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>\n        <intent><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="https" /></intent>\n    </queries>`;
 }
+
+/** `fragment` with the shell activity's launcher filter removed (`androidAlternateIcons`' `unlisted`), inside the
+ * fragment's element for the activity when it has one: a manifest declares an activity once. */
+export function withoutLauncher(fragment, unlisted) {
+  if (!unlisted) return fragment;
+  const open = /^ {8}<activity android:name="dev\.exact\.app\.MainActivity"[^>]*>\n/m.exec(fragment);
+  if (open) {
+    const end = fragment.indexOf('        </activity>', open.index);
+    return `${fragment.slice(0, end)}${unlisted.join('\n')}\n${fragment.slice(end)}`;
+  }
+  return withMetaData(fragment, ['        <activity android:name="dev.exact.app.MainActivity">', ...unlisted, '        </activity>']);
+}

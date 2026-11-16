@@ -6,7 +6,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { androidAlternateIcons } from './agent-android-alternates.mjs';
 import { androidIcons } from './agent-android.mjs';
+import { withoutLauncher } from './android-manifest.mjs';
 import { apkChanges } from './agent-stdio.mjs';
 import { readPng } from './app-icons.mjs';
 import { encodePng } from './png.mjs';
@@ -144,4 +146,25 @@ test("an APK is stale when an icon it packaged changed or is gone, and not when 
   assert.deepEqual(apkChanges(app, apk), [icon]);
   rmSync(icon);
   assert.deepEqual(apkChanges(app, apk), [icon]);
+}));
+
+test("@exact/app-icon's alternate icons: an adaptive icon and a disabled launcher alias each, the launcher entry moved to the primary's alias", () => inDir((dir) => {
+  png(dir, 'icons/navy.png', 512, 512, (x, y) => x + y === 0 ? [242, 242, 242, 255] : [31, 58, 104, 255]);
+  const res = resolve(dir, 'res'), made = androidAlternateIcons({ Navy: 'icons/navy.png' }, dir, res, '@mipmap/exact_icon');
+  assert.deepEqual(files(res), ['drawable-nodpi/exact_icon_navy_foreground.png', 'mipmap-anydpi/exact_icon_navy.xml', 'values/exact_icon_alternates.xml']);
+  assert.match(readFileSync(resolve(res, 'values/exact_icon_alternates.xml'), 'utf8'), /exact_icon_navy_background">#FFF2F2F2</);
+  assert.deepEqual(made.files, [picked(dir, 'icons/navy.png')]);
+  const lines = made.lines.join('\n');
+  assert.match(lines, /ExactIcon" [^>]*android:enabled="true"\s+android:icon="@mipmap\/exact_icon"/);
+  assert.match(lines, /ExactIconNavy" [^>]*android:enabled="false"\s+android:icon="@mipmap\/exact_icon_navy"/);
+  // The fragment's own element for the activity takes the removal: a manifest declares an activity once.
+  const own = '    <application>\n        <activity android:name="dev.exact.app.MainActivity" android:launchMode="singleTask">\n        </activity>\n    </application>';
+  const moved = withoutLauncher(own, made.unlisted);
+  assert.equal(moved.match(/<activity android:name="dev.exact.app.MainActivity"/g).length, 1);
+  assert.match(moved, /<intent-filter tools:node="remove">[\s\S]*LAUNCHER[\s\S]*<\/activity>/);
+  assert.match(withoutLauncher('', made.unlisted), /<activity android:name="dev.exact.app.MainActivity">\n {12}<intent-filter tools:node="remove">/);
+  assert.equal(androidAlternateIcons(undefined, dir, res, '@mipmap/exact_icon'), null);
+  assert.throws(() => androidAlternateIcons({ navy: 'icons/navy.png' }, dir, res, '@mipmap/exact_icon'), /starting with a capital/);
+  png(dir, 'icons/small.png', 100, 100, () => [0, 0, 0, 255]);
+  assert.throws(() => androidAlternateIcons({ Small: 'icons/small.png' }, dir, res, '@mipmap/exact_icon'), /at least 432 px/);
 }));
