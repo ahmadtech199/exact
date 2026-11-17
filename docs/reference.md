@@ -1185,13 +1185,49 @@ Each platform selects independently; tvOS keeps its asset catalogs and does
 not inherit the iOS selection. There is no `.icon` discovery. The selected
 project must be inside the app and cannot coexist with a primary
 `AppIcon.appiconset`, or a set with the project's name, in that platform's
-catalogs. On iOS, other `.appiconset` sets in the catalogs compile as alternate
-icons, also with a raster primary. Pass the set's basename, without the extension,
-to `UIApplication.setAlternateIconName`; `nil` restores the primary. Missing paths
-and paths that are not `.icon` directories fail by name. The project and its
-layers compile in the same `actool` pass as the app's catalogs; changing them
-requires a new native build. `icons` still supplies the web and the native
-raster fallback when the platform has no `icon` selection.
+catalogs. Missing paths and paths that are not `.icon` directories fail by name.
+The project and its layers compile in the same `actool` pass as the app's
+catalogs; changing them requires a new native build. `icons` still supplies the
+web and the native raster fallback when the platform has no `icon` selection.
+
+An app may ship icons the person chooses for the Home Screen instead
+(LLP 1163.000). `alternate_icons` in `app.json` lists them in the order a
+picker shows them, each a `name` (ASCII letters and digits, starting with a
+letter, at most 32, unique regardless of case) and the icons it is made from,
+written and picked as the app's own are: `icons` with at least one square `any`
+or `maskable`, `color_scheme_dark.icons`, a `monochrome` glyph for the tinted
+icon. iOS and iPadOS build each one: from its own `host.ios.icon` project, else
+an `.appiconset` of its name in the app's catalogs, else its icons. It is the
+only roster: a catalog `.appiconset` that no entry names, other than the
+primary's, is refused, as is a name that is `AppIcon`, the primary project's
+or another asset's in the catalogs. Alternates need a primary. The names are in
+the iOS compatibility id, so adding, removing, renaming or reordering one needs
+a new binary; other hosts build none. `@exact/app-icon` reads the choice and
+asks for another:
+
+```
+use appIcon, setAppIcon, AppIconStatus from "@exact/app-icon"
+
+  resource shown = appIcon() as shape AppIconStatus else empty()
+  mutation chosen as shape AppIconStatus refreshes shown
+  action pick(name: option<string>)
+    send chosen = setAppIcon(icon=name)
+```
+
+`appIcon()` answers `available` (the platform switches icons, and the binary
+ships an alternate or one still shows), `icon` (the alternate shown, `none` for
+the primary; it may name one an update removed) and `icons` (the roster when
+available). `setAppIcon(icon=)` is a request: call it only from the action a
+person's choice runs, never from a timer, a resource's answer or launch, since
+iOS shows its own alert for each change and the runner does not enforce this.
+The icon already shown answers at once with no alert, and `none` always restores
+the primary. It refuses `NotAllowedError` (`person-required` from a tool or a
+wake, or the app not in the foreground), `NotSupportedError` where `available`
+is false (every target but iOS and iPadOS), `NotFoundError` for a name the
+binary does not ship, and `UnknownError` with `apple: {domain, code}` when iOS
+refuses. Under the agent the roster is the word `app-icon.icons` (`prefer`),
+and each change holds an `app-icon` ticket standing for iOS's alert
+(`docs/recipes/alternate-app-icons.md`).
 
 What shows before the first frame is `app.json`'s Web App Manifest
 `background_color`, and in a dark scheme `color_scheme_dark.background_color`

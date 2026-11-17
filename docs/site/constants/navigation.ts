@@ -77,6 +77,12 @@ export const sections: NavSection[] = [
         description: 'Clear fields and close forms only on ok: true.',
       },
       {
+        route: 'recipeAlternateAppIcons',
+        path: '/recipes/alternate-app-icons',
+        source: 'recipes/alternate-app-icons.md',
+        description: 'Icons the person chooses for the Home Screen: alternate_icons in app.json, and @exact/app-icon reads and asks for the choice on iOS.',
+      },
+      {
         route: 'recipeAppJson',
         path: '/recipes/app-json',
         source: 'recipes/app-json.md',

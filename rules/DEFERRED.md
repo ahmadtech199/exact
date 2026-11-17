@@ -75,6 +75,15 @@ and its build and drive plumbing are deleted, and Android's knob does not grow
 per host. Still out: variants for games, on Windows, for `exact install` and
 its siblings, for `share`, and in the association files.
 
+**Expanded (Charlie, 2026-11-17, on #764: "write up an LLP … and then pursue
+the best path"; LLP 1163.000):** alternate app icons the person chooses, on iOS
+and iPadOS: app.json `alternate_icons`, built as the app's own icons are, and
+`@exact/app-icon`'s `appIcon` and `setAppIcon`. The consumer is Shelf's App Icon
+setting. Take: the discovery of alternates from catalogs, where every extra
+`.appiconset` was one, is deleted; the manifest's list is the only roster. Still
+out: Android, until its own RFC (LLP 1163.000 D5); tvOS, until a consumer asks;
+the Mac's Dock tile; switching without the person's tap.
+
 **Expanded (Charlie, 2026-10-11, events ruling):** `keycapture=` admits DOM
 capture-phase key dispatch for the coding-agent desktop app's early shortcuts;
 `focusin`/`focusout` admit bubbling subtree focus observation for the clipped
