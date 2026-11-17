@@ -22,19 +22,21 @@ use appIcon, setAppIcon, AppIconStatus from "@exact/app-icon"
 component App
   resource shown = appIcon() as shape AppIconStatus else empty()
   mutation chosen as shape AppIconStatus refreshes shown
-  action choose(name: option<string>)
+  action choose(name: string)
     send chosen = setAppIcon(icon=name)
+  action choosePrimary
+    send chosen = setAppIcon()
   view
     list appearance="auto" listStyle="inset-grouped"
       if shown.available
         section
           header
             text "App Icon"
-          button press=choose(none) role="radio" aria-checked=(shown.icon == none) testId="icon-primary"
+          button press=choosePrimary role="radio" aria-checked=(shown.icon == none) testId="icon-primary"
             image "assets/icon.png" alt="" width=29 height=29 border-radius=7
             text "Default" flex=1
           if shown.icons.includes("Paper")
-            button press=choose(some("Paper")) role="radio" aria-checked=(shown.icon == some("Paper")) testId="icon-paper"
+            button press=choose("Paper") role="radio" aria-checked=(shown.icon == some("Paper")) testId="icon-paper"
               image "assets/icon-paper.png" alt="" width=29 height=29 border-radius=7
               text "Paper" flex=1
 ```
@@ -47,7 +49,7 @@ component App
   iPadOS. `setAppIcon` refuses `NotSupportedError` there, and `NotFoundError`
   for a name the binary does not ship.
 - **`icon` is iOS's own answer.** It may name an alternate an update removed;
-  `none` always restores the primary.
+  `setAppIcon()`, with no icon, always restores the primary.
 - **A new roster is a new binary**: the names are in the iOS compatibility id.
   New art for the same name is a native build too, never an update.
 

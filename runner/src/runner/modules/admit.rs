@@ -794,6 +794,12 @@ impl<D: DataSource> Runner<D> {
             {
                 Decision::Now(self.pin_shortcut(row, args))
             }
+            // The app's icon (LLP 1163.000 D4, `declared/app_icon.rs`).
+            Route::Substitute
+                if self.substitute(row)["appIcon"] == "set" && !self.unsupported_here(row) =>
+            {
+                self.app_icon_decide(row, args)
+            }
             // A login item's registration and a global shortcut's (LLP
             // 1133.025 §11, `declared/desktop.rs`).
             Route::Substitute if self.desktop_form(row) => {

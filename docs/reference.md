@@ -1210,8 +1210,10 @@ use appIcon, setAppIcon, AppIconStatus from "@exact/app-icon"
 
   resource shown = appIcon() as shape AppIconStatus else empty()
   mutation chosen as shape AppIconStatus refreshes shown
-  action pick(name: option<string>)
+  action pick(name: string)
     send chosen = setAppIcon(icon=name)
+  action pickPrimary
+    send chosen = setAppIcon()
 ```
 
 `appIcon()` answers `available` (the platform switches icons, and the binary
@@ -1220,8 +1222,8 @@ the primary; it may name one an update removed) and `icons` (the roster when
 available). `setAppIcon(icon=)` is a request: call it only from the action a
 person's choice runs, never from a timer, a resource's answer or launch, since
 iOS shows its own alert for each change and the runner does not enforce this.
-The icon already shown answers at once with no alert, and `none` always restores
-the primary. It refuses `NotAllowedError` (`person-required` from a tool or a
+The icon already shown answers at once with no alert, and `setAppIcon()`, with
+no icon, always restores the primary. It refuses `NotAllowedError` (`person-required` from a tool or a
 wake, or the app not in the foreground), `NotSupportedError` where `available`
 is false (every target but iOS and iPadOS), `NotFoundError` for a name the
 binary does not ship, and `UnknownError` with `apple: {domain, code}` when iOS
