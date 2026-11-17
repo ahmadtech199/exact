@@ -298,6 +298,15 @@ void exact_textflow_free(uint64_t handle);
  * min(count,cap) to out (null is a query); returns count, 0 for invalid UTF-8. */
 size_t exact_text_line_breaks(const uint8_t *utf8, size_t len,
     const uint32_t *words, size_t word_count, uint32_t *out, size_t cap);
+/* LLP 1001 §6: where Blink's scorer breaks a balanced paragraph of `lines` greedy
+ * lines in `width` (the first line's less `indent`), its block's font `font_size`.
+ * `count` break opportunities in order, the last the paragraph's end: where a line
+ * ending there ends, where the next starts, both from the paragraph's start, and
+ * whether it shows a hyphen. Writes the lines - 1 indices where lines break; returns
+ * their count, 0 where the scorer gives nothing (bisect, or keep the greedy lines). */
+size_t exact_text_balanced_breaks(float width, float indent, float font_size, uint32_t justified,
+    const float *ends, const float *nexts, const uint8_t *hyphens, size_t count, size_t lines,
+    uint32_t *out, size_t cap);
 
 /* LLP 1060.000 D3: natural text's base direction per paragraph (UAX #9 P2, P3 at its
  * paragraph separators; `fallback` where one has no strong character): 0 ltr, 1 rtl.
@@ -682,10 +691,13 @@ uint32_t exact_share_land(ExactRuntime rt);
  * A change's text, key's name, or guest message is the payload in the input
  * buffer's first len bytes. */
 uint32_t exact_dispatch(ExactRuntime rt, uint32_t view, uint32_t kind, size_t len, double now_ms);
-/* A scroll container the presenter shows (or, nonzero page, the page) now
+/* A scroll container the presenter shows (page 0, or 1 for the page) now
  * stands at left, top CSS px (scrollLeft, scrollTop), handler or not: what
  * frame() and measure() subtract from the kernel's scroll-free box, so an
- * action reads the box where the viewer sees it (LLP 1051.000 D1). No batch. */
+ * action reads the box where the viewer sees it (LLP 1051.000 D1). No batch.
+ * Page 2 consumes a collection mailbox: top is the main-axis offset; exact_in
+ * holds the snapshot revision and scroll sequence as two LE uint64_t words.
+ * It updates collection geometry without feedback, retirement or a batch. */
 void exact_scrolled(ExactRuntime rt, uint32_t page, uint32_t view, double left, double top);
 /* An inline run's shaped fragments, united in viewport coordinates. Called
  * synchronously on the runtime owner; UI work is served on main. */
@@ -712,7 +724,7 @@ const uint8_t *exact_field_decorations(const uint8_t *input, size_t len, size_t 
  * then an excluded rectangle (NaN at x means no exclusion).
  * Its hit region is independent of the content's clip and pointer events. */
 void exact_top_layer(ExactRuntime rt, const uint32_t *views, const double *rects, const double *clips, uint32_t count, uint32_t modal, uint32_t backdrop_view, const double *backdrop);
-/* Versioned LE collection feedback in exact_in; returns the ordinary batch. */
+/* Versioned LE collection feedback in exact_in. */
 uint32_t exact_collection_feedback(ExactRuntime rt, size_t len, double now_ms);
 /* Laid-out fixed sibling extent, side 0 (lead) or 1 (trail). Counts come
  * from the snapshot's fixed roots. NaN when the geometry is unavailable. */

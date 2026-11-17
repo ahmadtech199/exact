@@ -939,10 +939,15 @@ test('activity refusals allow native APNs without activities and still scan ever
         if (symbol === 'registerForRemoteNotifications') for (const app of [plain, empty]) {
           assert.equal(assertActivityRefusals(dir, runApple, app), 0);
         }
-        assert.throws(() => assertActivityRefusals(dir, runApple, activity), new RegExp(symbol));
-        // With `device.push`, the app registers beside its activities; push-to-start stays refused (LLP 1133.004 §9 P8).
-        if (symbol === 'registerForRemoteNotifications') assert.equal(assertActivityRefusals(dir, runApple, activity, granted), binaries.length);
-        else assert.throws(() => assertActivityRefusals(dir, runApple, activity, granted), new RegExp(symbol));
+        if (symbol === 'registerForRemoteNotifications') {
+          assert.throws(() => assertActivityRefusals(dir, runApple, activity), new RegExp(symbol));
+          // With `device.push`, the app registers beside its activities.
+          assert.equal(assertActivityRefusals(dir, runApple, activity, granted), binaries.length);
+        } else {
+          // Push-to-start is admitted (LLP 1126 D9, amended 2026-11-17).
+          assert.equal(assertActivityRefusals(dir, runApple, activity), binaries.length);
+          assert.equal(assertActivityRefusals(dir, runApple, activity, granted), binaries.length);
+        }
       }
       writeFileSync(binary, bytes);
     }
@@ -958,7 +963,7 @@ test('activity refusals allow native APNs without activities and still scan ever
 });
 
 // The async iOS step supplies its just-built bundle. Glue has no assembled iOS fixture yet.
-test.skipIf(!process.env.EXACT_ACTIVITY_APP)('the assembled app and extension refuse push-to-start symbols, remote registration without device.push, and its background mode (LLP 1126.001 WP9; LLP 1133.004 §9 P8)', async () => {
+test.skipIf(!process.env.EXACT_ACTIVITY_APP)('the assembled app and extension admit push-to-start symbols, refuse remote registration without device.push, and refuse its background mode (LLP 1126.001 WP9; LLP 1133.004 §9 P8)', async () => {
   const { cpSync, readFileSync, readdirSync } = await import('node:fs');
   const { spawnSync } = await import('node:child_process');
   const { resolve } = await import('node:path');
@@ -983,10 +988,13 @@ test.skipIf(!process.env.EXACT_ACTIVITY_APP)('the assembled app and extension re
       const granted = 'device.notifications purpose.notifications\ndevice.push';
       for (const symbol of ['pushToStartTokenUpdates', 'registerForRemoteNotifications']) {
         writeFileSync(binary, Buffer.concat([bytes, Buffer.from(`\0${symbol}\0`)]));
-        assert.throws(() => assertActivityRefusals(dir, runApple, declaration), new RegExp(symbol));
-        // `device.push` admits registration beside the activities, never push-to-start (LLP 1133.004 §9 P8).
-        if (symbol === 'pushToStartTokenUpdates') assert.throws(() => assertActivityRefusals(dir, runApple, declaration, granted), new RegExp(symbol));
-        else assert.ok(assertActivityRefusals(dir, runApple, declaration, granted) >= 3);
+        if (symbol === 'pushToStartTokenUpdates') {
+          assert.ok(assertActivityRefusals(dir, runApple, declaration) >= 3);
+          assert.ok(assertActivityRefusals(dir, runApple, declaration, granted) >= 3);
+        } else {
+          assert.throws(() => assertActivityRefusals(dir, runApple, declaration), new RegExp(symbol));
+          assert.ok(assertActivityRefusals(dir, runApple, declaration, granted) >= 3);
+        }
       }
       writeFileSync(binary, bytes);
     }
@@ -1019,6 +1027,7 @@ test.skipIf(process.platform !== 'darwin' || !['clang', 'codesign', 'sips', 'dsy
   const { assembleIOS } = await import('./bundle.mjs');
   const { stripProductionExecutable } = await import('./link.mjs');
   const { shippedReceipt, copyAppleGpuProducts } = await import('./build.mjs');
+  const { entitlements } = await import('./build.mjs');
   const { wrapFramework, signedGpuProduct, codeDigest, plistFile } = await import('./assets.mjs');
   const dir = mkdtempSync(resolve(tmpdir(), 'exact-ios-package-'));
   const run = (cmd, args) => {
@@ -1049,6 +1058,9 @@ test.skipIf(process.platform !== 'darwin' || !['clang', 'codesign', 'sips', 'dsy
     const library = { placed: resolve(libraries, 'FixtureLibrary.framework'), link: 'FixtureLibrary' };
     const plan = Buffer.from('fixture'), compat = { embedded: { plan: { sha256: createHash('sha256').update(plan).digest('hex'), bytes: plan.length }, assets: [] } };
     const pairs = [['libweb.dylib', 'ExactWeb'], ['libmodules.dylib', 'ExactModules'], ['libsvg.dylib', 'ExactSvg'], ['libcanvas.dylib', 'ExactCanvasGpu'], ['libservice.dylib', 'ExactService']];
+    const cloudkitEnvironment = 'com.apple.developer.icloud-container-environment';
+    const appleReach = { entitlements: ['com.apple.developer.icloud-services', 'com.apple.developer.icloud-container-identifiers', cloudkitEnvironment],
+      entitlementValues: { 'com.apple.developer.icloud-services': ['CloudKit'] } };
     const build = { trust: 'production', linkedPlan: '/private/plan', binary: { sha256: 'binary', inputs: [{ path: '/private/source' }], metadata: {}, privacyManifests: [capturePrivacyManifest(resolve(dir, 'PrivacyInfo.xcprivacy'))] }, products: [{ path: '/private/product' }], graph: { artifacts: [], extensions: {}, contractSources: [] } };
     writeFileSync(resolve(dir, 'PrivacyInfo.xcprivacy'), plistFile({ NSPrivacyTracking: false }));
     for (const [production, device, archived] of [[true, true, false], [true, true, true], [true, false, false], [false, true, false]]) {
@@ -1077,11 +1089,11 @@ test.skipIf(process.platform !== 'darwin' || !['clang', 'codesign', 'sips', 'dsy
         libDir: capture, gpuArtifacts: [gpu], looseArms: [[true, dylib, ...pairs[0]]],
         modulesBuilt: dylib, modulesLoadName: pairs[1][0], hasSvg: true, svgBuilt: dylib, svgLoadName: pairs[2][0],
         canvasGpuBuilt: dylib, canvasGpuLoadName: pairs[3][0], serviceDylibs: [{ built: service, load: pairs[4][0], framework: pairs[4][1] }],
-        args: [], unsigned: true, sha1: '-', linkRoot: binDir, sdkName: 'iphoneos' };
+        args: [], unsigned: true, sha1: '-', linkRoot: binDir, sdkName: 'iphoneos', appleReach };
       const helpers = {
         runApple: run, infoPlist: () => plistFile({ CFBundleIdentifier: app.id, CFBundleExecutable: 'ExactClip', CFBundlePackageType: 'APPL' }),
         copyAppleStaticTrees() {}, writeUsageStrings() {}, assertAppleIdentity() {}, distributionKeys: () => ({}),
-        receipt: () => whole, shippedReceipt, copyAppleGpuProducts, entitlements: () => plistFile({}), appClip: () => ({ id: app.id + '.Clip', name: 'Clip', executable: 'Clip' }),
+        receipt: () => whole, shippedReceipt, copyAppleGpuProducts, entitlements, appClip: () => ({ id: app.id + '.Clip', name: 'Clip', executable: 'Clip' }),
       };
       if (!production) {
         // Inspect the app after AlarmKit's plist writes, before compiling its separate extension.
@@ -1105,6 +1117,13 @@ test.skipIf(process.platform !== 'darwin' || !['clang', 'codesign', 'sips', 'dsy
         finally { probe.mockRestore(); }
       }
       const result = assembleIOS(options, helpers);
+      const signed = device ? run('codesign', ['-d', '--entitlements', '-', '--xml', bundle]).stdout : readFileSync(resolve(binDir, 'entitlements.plist'), 'utf8');
+      assert.match(signed, new RegExp(`<key>${cloudkitEnvironment}</key>\\s*<string>Production</string>`),
+        'a distribution archive needs Production, including when a recipient will re-sign it (ITMS-90046)');
+      assert.match(signed, /<key>com.apple.developer.icloud-services<\/key>\s*<array>\s*<string>CloudKit<\/string>/);
+      assert.match(signed, new RegExp(`<string>iCloud\\.${app.id}</string>`));
+      assert.doesNotMatch(signed, /aps-environment|ubiquity-/);
+      assert.doesNotMatch(run('codesign', ['-d', '--entitlements', '-', '--xml', resolve(bundle, 'AppClips/Clip.app')]).stdout, /com.apple.developer.icloud-/);
       for (const owner of [bundle, resolve(bundle, 'AppClips/Clip.app'), ...(production ? [...pairs, [null, 'ExactGpu']].map(([, name]) => resolve(bundle, 'Frameworks', `${name}.framework`)) : [])]) {
         const privacy = resolve(owner, 'PrivacyInfo.xcprivacy'); assert.equal(run('plutil', ['-lint', privacy]).status, 0);
         const usesDisk = diskService && (owner.endsWith('/ExactService.framework') || (!production && owner.endsWith('.app')));

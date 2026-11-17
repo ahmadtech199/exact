@@ -731,15 +731,21 @@ question 1) is not admitted.
 
 **Expanded (Charlie, 2026-11-14, issue panel D1; LLP 1133.001.000):** a
 package outside exact2 opts into closed lists that stay exact2's: Info.plist
-keys, device rows (`device.shareplay` added; `device.cloudkit` once the
-package can be read) and host events (`cloudkit-share`, held until the
-package takes it, writing `CKSharingSupported` when it is taken). A row is
-admitted for a package readable at a pinned version. Consumer: nqh-packages'
-CloudKit and SharePlay packages (#531, #532, #526). Unblocks sharing an iCloud
+keys, device rows (`device.shareplay` and `device.cloudkit`) and host events
+(`cloudkit-share`, held until the package takes it, writing `CKSharingSupported`
+when it is taken). A row is
+admitted for a package readable at a pinned version. For `device.cloudkit`, that
+condition is waived by Charlie, 2026-11-16, expo/exact#531: a bare line derives
+`iCloud.<bundle id>`; an explicit `iCloud.<name>` selects one container. It signs
+CloudKit's services, container identifiers and signing environment on iOS and
+under a provisioning profile on the Mac, with no purpose or push grant.
+Consumer: nqh-packages' CloudKit and SharePlay packages (#531, #532, #526).
+Unblocks sharing an iCloud
 zone and a SharePlay session from a package on an unpatched exact2. Take:
 waived by Charlie, 2026-11-14, after the panel. Still out: a package adding to
-a list; CloudKit and SharePlay as standard modules; silent notifications for
-CloudKit; an Android event seam.
+a list; CloudKit and SharePlay as standard modules; multiple containers;
+silent notifications for CloudKit, including silent pushes for CKSyncEngine;
+an Android event seam.
 
 **Expanded (Daehyeon Mun, 2026-10-23; LLP 1133.005):** a local listener,
 `exactListen("unix:<path>", options)`: a data capability in `fetch`'s shape
@@ -831,6 +837,15 @@ names no take; `:focus-within` remains out.
   a reload (LLP 1121 D13). It patches values only: no code, no slots, no tree. A scrub
   session previews values for the length of a gesture. Release builds change their
   design only by an update. Charlie's waiver; no take is named.
+  **Admitted (Charlie, 2026-11-17; expo/exact#754; LLP 1029.000.002 §7), every restart
+  with carry, `deploy.activate: "immediate"` included:** a replacement matches views and
+  component instances by their place in the tree (LLP 1029.000.002 D1) and keeps what
+  matches: a component's state and owned answers, a kept view and its native editor,
+  scroll anchors, focus and selection. It counts a session `generation` that never
+  repeats. It is still a restart with carry: no patch format, no staged reload, no code
+  patched in place, and no private heap migrated. It replaces four unnamed matchers
+  (`lifted`'s counter names, `CarriedPanels`, `FocusPlace`, the JS checkpoint's index
+  path). Charlie's waiver; no take is named.
 - Islands and inline islands.
 - Cross-runtime shared data in production. **Measured exception (Charlie,
   2026-09-18, LLP 1027.003 §9):** all four isolated transfer/storage directions
@@ -867,7 +882,8 @@ names no take; `:focus-within` remains out.
   runs when an update arrives (the system replaces the activity's state and
   the extension redraws it). Consumer: Interview's AI answer being written,
   which only its server can advance. Unblocks a Live Activity that stays true
-  while its app is suspended. Still refused: push-to-start, remote
+  while its app is suspended. Still refused: push-to-start (admitted
+  2026-11-17, below), remote
   notifications (a visible push admitted 2026-11-11, and a data-only push as a
   wake's trigger 2026-11-14, both below), and everything the click ruling left refused. Take: none
   named; the ruling stands as its own waiver.
@@ -913,10 +929,11 @@ names no take; `:focus-within` remains out.
   Notifications, and a production build (`packages/push/test/checklist.md`);
   nothing is claimed for a device until that run. Not built: push on macOS (the
   row is omitted there) and on the web
-  (Declarative Web Push or a host worker). Still refused: push-to-start; a
+  (Declarative Web Push or a host worker). Still refused: push-to-start
+  (admitted 2026-11-17, below); a
   notification service extension except for the app-owned Swift form admitted
-  below; an event raised by a push, but for a declared action the person chose
-  (below).
+  below; an event raised by a push, except Android data-only pushes and a declared
+  action the person chose (below).
   **Expanded (Charlie, 2026-11-14, "admit", on LLP 1172.016 Q1 after a
   three-seat panel split two to one for admitting):** a data-only push as a
   wake's trigger (`content-available`, the `remote-notification` background
@@ -947,12 +964,16 @@ names no take; `:focus-within` remains out.
   emulators. Owed on a phone: delivery after an OEM's background limits have
   stopped the app, Doze over hours, and the channel's sound and heads-up on a
   locked screen. With it, push on Android through FCM in `@exact/push`'s
-  Android implementation: its Firebase Installation ID as the live value, a
-  notification message shown in front too, and its tap opening `data.navigate`.
+  Android implementation: its FCM registration token and Firebase Installations
+  ID as the live value, a notification message shown in front too, and its tap
+  opening `data.navigate`.
   Built and run under the agent and on an emulator with no Firebase project;
   owed: a registration with a Firebase project and delivery through FCM. A
-  data message as a wake (admitted above, on LLP 1172.016 Q1) waits for
-  Android's headless session; until then it is journaled.
+  data-only message raises `push` through Android's headless session under a
+  ten-second bound. Charlie, 2026-11-16, admitted full Expo push service support:
+  token-mode registration and a TypeScript exchange with Expo, using
+  `extra.eas.projectId`. JVM and mocked-fetch tests cover these paths; real
+  registration and delivery through Expo remain owed on the reporter's phone.
   **Expanded (the 2026-11-14 panel, two to one, under Charlie's delegation and
   direction to build the ideal end state; LLP 1133.004 §9 P6, P8):** an app's
   own Swift `UNNotificationServiceExtension`, packaged by default in iOS and
@@ -962,10 +983,24 @@ names no take; `:focus-within` remains out.
   event. Consumer: the builder whose ordinary build replaced the extension.
   Unblocks decryption, downloaded media and rewritten alert text without a
   post-build patch. Take: waived under the delegation. Still refused:
-  push-to-start; an event raised by a visible push except for the person's
+  push-to-start (admitted 2026-11-17, below); an event raised by a visible push except for the person's
   declared action above; a notification content extension; Contract or
   TypeScript on a visible-alert arrival; filtering and critical-alert
   entitlements; and payload keys Exact reads beyond `navigate`.
+  **Expanded (Charlie, 2026-11-17, "Admit; we rewrite", on expo/exact#742;
+  LLP 1126 D9 and LLP 1133.004 §9 P8, amended):** ActivityKit push-to-start
+  for an app's own Live Activities on iOS 17.2 and later. `exactActivities()`
+  answers the push-to-start token, read only when an entry declares
+  `push: true`, and the entries a server may start, each with the generation
+  the app runs and its shape digest; the app gives them to its own backend,
+  which sends the start to APNs, and exact2 sends nothing and relays nothing
+  (LLP 1030.000 D6). No app code runs when a start arrives, and the host boots
+  no session for the launch iOS may make for it: the activity and its update
+  token reach the app at its next read of the source. Consumer: expo/exact#742's
+  author, whose backend starts an activity the app did not. Unblocks a Live
+  Activity that begins while its app is not running. Take: none named; the
+  ruling stands as its own waiver. Built; owed on a device: a start delivered
+  through APNs. Still refused: a session booted for a push-to-start's launch.
 
 **Components** — roughly 15 built-in tags, not 40; roughly 12 Facet components, not 47.
 
@@ -2184,15 +2219,18 @@ compose window, an inspector window or a Settings window, without app Swift. Tak
 none offered; waived by Charlie, 2026-11-14, after the panel (decision D3: all three
 seats chose to build it).
 
-**The displays and the pointer (LLP 1178; expo/exact#506).** The displays by
+**The displays, pointer and still capture (LLP 1178; expo/exact#505, #506).** The displays by
 the Window Management API's names (`getScreenDetails`,
 `windowManagementStatus` from `@exact/window-management`) and the pointer's
-position (`getPointerPosition`), on macOS, the Linux host (its one display)
-and the web (the display list, where the browser has it). Consumer:
+position (`getPointerPosition`), on macOS, Windows, the Linux host (its one
+display) and the web (the display list, where the browser has it). A still
+of every display (`captureScreens`, `screenRecordingStatus`,
+`requestScreenRecording` from `@exact/screen-capture`) is admitted on macOS
+and Windows, behind a one-time grant and without a picker per capture. Consumer:
 Anthonyy232's screenshot annotation tool (#505, #506). Unblocks putting its
-toolbar on the display that holds the pointer without its own monitor code.
+toolbar on the display that holds the pointer and capturing before showing
+its window, without its own Win32 monitor and capture code.
 Take: none offered; waived by Charlie, 2026-11-14, after the panel (decision
-D5: all three seats chose to build both). Still out: Windows (LLP 1178 piece
-4), a still of every display (`captureScreens`, pieces 6 and 7),
-`getDisplayMedia`, window placement, and the desktop Linux, iPadOS and
-Android cells.
+D5: all three seats chose to build both). Still out: `getDisplayMedia`, one
+display, a region, a named window, window placement, and the desktop Linux,
+iPadOS and Android cells.

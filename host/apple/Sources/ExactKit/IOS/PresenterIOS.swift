@@ -8,6 +8,8 @@ import os
 package final class Presenter {
     var documentLanguage = ""
     var documentDirection = "ltr"
+    /// The direction Exact's controllers take (`turnChrome`): nil until the document is told its language.
+    var chromeDirection: UITraitEnvironmentLayoutDirection?
     // A disabled signposter still allocates interval state; callers check its log first.
     static let signpostLog = OSLog(subsystem: "com.exact.host", category: .dynamicTracing)
     static let signposts = OSSignposter(logHandle: signpostLog)
@@ -18,6 +20,7 @@ package final class Presenter {
     @inline(never) static func endScrollSignpost(_ state: OSSignpostIntervalState) {
         signposts.endInterval("scrolled", state)
     }
+    var intersectHandlerCount = 0
     var clipboardHandlerCount = 0
     #if DEBUG
     var clipboardAncestryWalks = 0

@@ -511,18 +511,45 @@ new shape cannot update or end an older instance with incompatible state. A
 compatibility-changing binary update follows LLP 1126.001 §5 Q6’s device gate.
 
 `resource activities = exactActivities() as shape Activities` reads a record
-whose fields are `activities: Activity[]`, `frequentPushesEnabled: bool` and
-`linked: bool` (the host packaged its arm).
+whose fields are `activities: Activity[]`, `frequentPushesEnabled: bool`,
+`linked: bool` (the host packaged its arm), `pushToStartToken:
+option<string>` and `pushToStartActivities: PushStartActivity[]`.
 An activity has `id`, `kind`, `state` (a JSON string), `activityState`
 (`pending`, `active`, `stale`, `ended`, `dismissed`) and `token: option<string>`.
-Readers may name only the fields they need. Off iOS the list is empty and
-frequent pushes are false. A first demand enumerates existing activities,
-including after a relaunch without a send; later token, state and content
-updates re-answer the source. A token is absent until ActivityKit supplies
-it, and exists only for an entry declaring `push: true`. The data module
-sends it to its own backend. Push-to-start and the `remote-notification`
-background mode stay refused; an app with activities registers for remote
-notifications only when it grants `device.push`.
+A push-start activity has `kind`, `generation` and `shape`, all strings.
+Readers may name only the fields they need. Off iOS the lists are empty, the
+push-to-start token is absent and frequent pushes are false. A first demand
+enumerates existing activities, including after a relaunch without a send;
+later token, state and content updates re-answer the source. A token is absent
+until ActivityKit supplies it, and exists only for an entry declaring
+`push: true`. The data module sends it to its own backend. The
+`remote-notification` background mode stays refused; an app with activities
+registers for remote notifications only when it grants `device.push`.
+
+Push-to-start (iOS 17.2 and later) lets the app's backend start an activity
+while the app is not running (LLP 1126 D9). `pushToStartToken` is
+ActivityKit's push-to-start token, read only when an entry declares
+`push: true`; it is absent until ActivityKit supplies one, which it does
+once Live Activities are allowed, and the source answers again when it
+rotates. `pushToStartActivities` lists the entries declaring `push: true`, each
+with the `generation` the app runs and its state `shape` digest; it is empty
+until the app has published that generation, just after it starts. The backend
+sends APNs a `start` event with `attributes-type` `ExactActivityAttributes`,
+`attributes` `{"kind", "generation", "shape"}` from that list, and
+`content-state` `{"shape", "state"}`, the same shape digest and a state in
+the entry's declared shape
+([Apple: starting a Live Activity with a push](https://developer.apple.com/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications)).
+It sends the values the app last reported, since a delivered update changes
+the generation; a generation from before a compatibility-changing binary
+update no longer renders.
+
+No app code runs when the start arrives. iOS may launch the app in the
+background for it, and the host boots no session for that launch. The started
+activity, with its update `token`, appears in `activities` the next time a
+session reads `exactActivities()`: at once in a session already reading it,
+otherwise at the app's next launch. Until then the backend has no update token
+for the activity, so it cannot update or end it. The app can update and end
+it as it does an activity it started.
 
 ### MIDI: `exactMIDI`, `sendMIDI`, `midimessage`
 
@@ -818,6 +845,8 @@ step          = "tap" "midi" STRING ( HEX { HEX } | "clock" NUMBER NUMBER ) NL
               | "expect" "tree" ( "has" | "missing" ) STRING NL
               | "expect" ( "disabled" | "enabled" ) STRING NL  (* a control's `disabled` (LLP 1116.010 D3) *)
               | "expect" "focused" STRING NL         (* the node that holds the keyboard focus *)
+              | "expect" "layout" STRING ( "width" | "height" ) ( "==" | "<=" | ">=" ) NUMBER NL
+                                                     (* its laid-out size, in points *)
               | "expect" "refusal" STRING NL          (* one observed refusal of the named mutation slot *)
               | "expect" "text" STRING "==" STRING NL
               | "expect" "state" IDENT { "." ( IDENT | NUMBER ) }
@@ -948,7 +977,17 @@ Targets are driver test ids. `expect disabled "send"` (`enabled`) reads the cont
 does nothing, and fails its step on every host, `send is disabled`: say what the app refuses
 with `expect disabled`, then `expect enabled` once what enables it has happened. `expect
 focused "picker"` passes when that node holds the keyboard focus, as every host's tree marks it
-(`[focused]` in `agent <host> tree`): after a key moves the focus, or a dialog returns it. Each test is a session of its own, opened with its
+(`[focused]` in `agent <host> tree`): after a key moves the focus, or a dialog returns it.
+
+`expect layout "status-mark" height <= 24` bounds a node's laid-out `width` or `height` with
+`==`, `<=` or `>=`. The size is that of the box `agent <host> layout <target>` prints as `space
+viewport`: points (CSS pixels on the web) at two decimals, with a presentation transform folded
+in (LLP 1012). A failure names the size and the box, so an image a column stretched to its own
+width fails its test: `height of "status-mark" is 310, expected <= 24 (its box is 420×310)`.
+A size that comes from text, a platform control or the window differs by host: bound it, and
+keep `==` for a size the app sets.
+
+Each test is a session of its own, opened with its
 launch lines: `size 1200x800`, `epoch "2026-09-21T12:00:00Z"`, `time-zone
 "America/New_York"`, `locale "fr-FR"` and `seed 7` are the driver's `--size`,
 `--epoch`, `--time-zone`, `--locale` and `--seed`, so they lead the test's steps,
@@ -1491,8 +1530,8 @@ CSS hyphens are part of the authored name. `testId` and admitted host-specific
 props retain their declared spelling.
 `text-wrap-style="balance"` and its `text-wrap="balance"` shorthand are
 inherited; `auto` restores ordinary greedy wrapping. `pretty` and `stable` are refused with the supported values, `auto | balance`. Every host balances the
-lines before a paragraph's first forced break, up to six, at the narrowest
-width that keeps their count, as Chrome does (LLP 1001 §6).
+lines before a paragraph's first forced break, up to six, where Chrome
+breaks them (LLP 1001 §6).
 `-webkit-font-smoothing` takes `auto` or `antialiased` and is inherited; `none`
 and `subpixel-antialiased` are refused. It changes how glyphs paint, never how
 text measures (LLP 1019 D12).
@@ -2874,9 +2913,9 @@ the virtual clock).
   same button. Help retains the system search field; the standard menus, and
   Develop in a development build, remain unless removed. Other hosts keep the ordinary button
   and ignore this Mac presentation hint. On a top-level root,
-  `-exact-menu-remove="show-tab-bar autofill close-all"` suppresses the named
+  `-exact-menu-remove="show-tab-bar close-all"` suppresses the named
   standard items and their menu equivalents. The literal whitespace-separated
-  ids are `close-all`, `autofill`, `show-tab-bar`, `show-all-tabs`,
+  ids are `close-all`, `show-tab-bar`, `show-all-tabs`,
   `enter-full-screen`, `minimize`, `zoom`, `bring-all-to-front`,
   `show-previous-tab`, `show-next-tab`, `move-tab-to-new-window`,
   `merge-all-windows`, `back` (Go ▸ Back), `forward` (Go ▸ Forward), `develop` (the Develop menu),
@@ -3144,7 +3183,7 @@ Presentation probe readings remain diagnostic until qualified on a physical devi
 | `screenLate` | ms a frame reached the screen after UIKit expected it (`UIUpdateInfo.estimatedPresentationTime`), when over half a period, as the presentation probe saw it: with UI updates, a recording keeps two transparent one-point Metal layers and, as each update for which a drawable of either is ready (cleared off the main thread) begins its commit, presents that drawable on its own; its `presentedTime` is when the composite holding it reached the screen. The simulator's Metal has no `presentedTime`: there the probe presents and hears nothing |
 | `unshown` | a frame whose probe drawable was never shown (a `presentedTime` of 0, as for a frame the render server skipped for a later one), so the frame before stayed on screen in its place; in a total, how many |
 | `probed` | in a total, the frames the probe reported, late or not |
-| `render` | on iOS and tvOS, what in the window costs the render server work of its own each frame it composites it, read once as the recording stops (`ms`, how long that took): `layers`, the visible layers; `rows` under `columns`, one per `kind`, `place` and `node` (the Exact node's test id, else `#` and its id, else `node` and its number), with the `top` and `height` its layers span and their `count`; a kind more than four nodes have in one place is one row, its `node` how many. A `kind` is `backdrop` (a `CABackdropLayer`, which UIKit's blur and glass use: it renders what lies behind it first), `portal` (another part of the tree rendered again), `filter`, `blend`, `mask`, `shadow` (without a `shadowPath`), `group` (group opacity) or `rasterize`, each an offscreen pass, or `metal` (a Metal layer, as MapKit's map, which the GPU draws itself). A `content` row is in the followed scroller's content coordinates, so a late frame's `offset` to `offset` plus the viewport's height is what was on screen; a `fixed` row (bars, overlays) is in the window's. The `fixed` rows come first. A list that builds its rows as they scroll in has only those near the viewport then. The compact copy keeps the rows that fit after its 12 worst late frames, and `shown` counts them |
+| `render` | on iOS and tvOS, what in the window costs the render server work of its own each frame it composites it, read once as the recording stops (`ms`, how long that took): `layers`, the visible layers; `rows` under `columns`, one per `kind`, `place` and `node` (the Exact node's test id, else `#` and its id, else `node` and its number), with the `top` and `height` its layers span and their `count`; a kind more than four nodes have in one place is one row, its `node` how many. A `kind` is `backdrop` (a `CABackdropLayer`, which UIKit's blur and glass use: it renders what lies behind it first), `portal` (another part of the tree rendered again), `filter`, `blend`, `mask`, `shadow` (without a `shadowPath`), `group` (group opacity) or `rasterize`, each an offscreen pass, or `metal` (a Metal layer, as MapKit's map, which the GPU draws itself). `backdrop` and `portal` are Core Animation's private classes, told by name only in a development build: a production build names none (LLP 1035.003), so there a backdrop's blur is a `filter` and a portal is not reported. A `content` row is in the followed scroller's content coordinates, so a late frame's `offset` to `offset` plus the viewport's height is what was on screen; a `fixed` row (bars, overlays) is in the window's. The `fixed` rows come first. A list that builds its rows as they scroll in has only those near the viewport then. The compact copy keeps the rows that fit after its 12 worst late frames, and `shown` counts them |
 | `scrolledPt` | a segment's distance, from where its first interval began; none for the first segment of a scroller taken as it moved |
 | `droppedFrames` | frames after the first 36,000 (five minutes at 120 Hz), which a recording does not keep |
 | `lateShown`, `shown` | how many late frames (and in the compact copy, scroll segments) the trace reports of all there were. The full report keeps up to 200 late frames in time order, those late the longest by `hitchMs` when there are more; the compact copy lists the ones that fit, those late the longest first, and leaves out the segments at rest |
