@@ -1,6 +1,6 @@
 // Press feedback (LLP 1061 D2): while a finger (a mouse button on macOS)
 // holds a pressable node down inside its box, the node shows its
-// `-exact-press-scale`, eased in over 120 ms and eased back on release or cancel.
+// `-exact-press-scale`, eased in over 120 ms and sprung back on release or cancel.
 // The host owns it end to end — touch-down to the first scaled frame never
 // waits for the runner — and it composes with the motion engine by folding
 // into the one transform every writer goes through (`applyTransform`): an
@@ -29,12 +29,22 @@ package struct PressFeedback {
     /// none is held.
     var dimmedAt: CFTimeInterval?
     #endif
-    /// In and back alike: a fast settle that reads as a physical give.
+    /// The press in: a fast settle that reads as a physical give.
     package static let duration: CFTimeInterval = 0.12
     /// `ease` as Core Animation's curve, for the render server's ease.
     package static let timing = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
     /// Shorter than one 60 Hz frame: a press this young was never presented.
     static let unseen: CFTimeInterval = 1.0 / 60
+
+    /// The way back from a press: an underdamped spring (response 0.35 s,
+    /// damping ratio 0.55, UIKit's `UISpringTimingParameters` terms) that
+    /// overshoots the rest scale by an eighth of the press and settles, as a
+    /// UIKit control's release does; within 0.1 % of rest by `springLength`.
+    static let springStiffness = 322.3, springDamping = 19.75
+    static let springLength: CFTimeInterval = 0.7
+    /// Toward rest from a deeper factor: the release, which springs.
+    var springs: Bool { to == 1 && from < 1 }
+    var length: CFTimeInterval { springs ? Self.springLength : Self.duration }
 
     var idle: Bool { from == 1 && to == 1 }
     /// As a node that was never pressed holds it.
@@ -47,10 +57,21 @@ package struct PressFeedback {
         return from == value && to == value && start == 0 && !releaseHeld
     }
     func factor(at t: CFTimeInterval) -> CGFloat {
+        if springs {
+            let e = t - start
+            return e >= Self.springLength ? to : from + (to - from) * CGFloat(Self.spring(max(0, e)))
+        }
         let p = min(1, max(0, (t - start) / Self.duration))
         return from + (to - from) * CGFloat(Self.ease(p))
     }
-    func settled(at t: CFTimeInterval) -> Bool { t - start >= Self.duration }
+    func settled(at t: CFTimeInterval) -> Bool { t - start >= length }
+    /// The spring's progress from 0 at rest to 1, at `t` seconds, released
+    /// with no velocity: the closed form `CASpringAnimation` draws.
+    static func spring(_ t: Double) -> Double {
+        let omega = springStiffness.squareRoot(), zeta = springDamping / (2 * omega)
+        let damped = omega * (1 - zeta * zeta).squareRoot()
+        return 1 - exp(-zeta * omega * t) * (cos(damped * t) + zeta * omega / damped * sin(damped * t))
+    }
     /// Re-aim from wherever the factor is now: a release mid-ease never jumps.
     mutating func aim(_ target: CGFloat, at t: CFTimeInterval) {
         guard target != to else { return }
@@ -220,13 +241,24 @@ extension NodeView {
         // box's rotation too, out of the screen's plane or not: it commutes
         // with the model's own scale there.
         let o = transformOriginPoint
-        let ease = CABasicAnimation(keyPath: "transform")
+        let ease: CABasicAnimation
+        if press.springs {
+            let spring = CASpringAnimation(keyPath: "transform")
+            spring.mass = 1
+            spring.stiffness = PressFeedback.springStiffness
+            spring.damping = PressFeedback.springDamping
+            spring.initialVelocity = 0
+            spring.duration = PressFeedback.springLength
+            ease = spring
+        } else {
+            ease = CABasicAnimation(keyPath: "transform")
+            ease.duration = PressFeedback.duration
+            ease.timingFunction = PressFeedback.timing
+        }
         ease.isAdditive = true
         ease.fromValue = CATransform3DMakeAffineTransform(pressScale(press.from / press.to))
         ease.toValue = CATransform3DIdentity
         ease.beginTime = layer.convertTime(press.start, from: nil)
-        ease.duration = PressFeedback.duration
-        ease.timingFunction = PressFeedback.timing
         layer.add(ease, forKey: "press")
         press.easedAbout = CGPoint(x: o.x - bounds.midX, y: o.y - bounds.midY)
         // A one-axis clip above fits the ease's extent, not the model's.
@@ -270,7 +302,7 @@ extension NodeView {
     /// A settled release is idle again, its transform exactly the engine's.
     private func idleWhenSettled() {
         let start = press.start
-        DispatchQueue.main.asyncAfter(deadline: .now() + PressFeedback.duration) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + press.length) { [weak self] in
             guard let self, press.start == start, press.to == 1, !press.releaseHeld else { return }
             press = PressFeedback()
         }
