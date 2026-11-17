@@ -204,8 +204,6 @@ final class GroupedListHost: GroupedLists {
     private(set) var lists: [UInt32: GroupedListView] = [:]
     /// The theme's generation the lists last drew from (`sync`).
     private var theme = ThemeRoles.generation
-    /// The document's direction the lists were last built in (`sync`).
-    private var direction = ""
     /// Each list's margins as the kernel was last told them (`tell`).
     var told: [UInt32: [CGFloat]] = [:]
     /// What each view is covered by, as the kernel was last told (`tellAccessories`).
@@ -238,12 +236,11 @@ final class GroupedListHost: GroupedLists {
         // but every list draws from them: each one updates.
         let rethemed = theme != ThemeRoles.generation
         theme = ThemeRoles.generation
-        // A collection view whose direction turns keeps the cells it laid out
-        // mirrored, so a change of the document's direction builds each list again.
-        let turned = direction != presenter.documentDirection
-        direction = presenter.documentDirection
         for owner in presenter.carrying("listStyle") where owner.kind == "list" {
             live.insert(owner.id)
+            // A collection view whose direction turns keeps the cells it laid
+            // out mirrored: a list whose own direction changed is built again.
+            let turned = lists[owner.id].map { $0.direction != GroupedListView.direction(of: owner) } ?? false
             if let list = lists[owner.id], list.owner === owner, let changed, !changed.contains(owner.id), !rethemed, !turned {
                 list.mount(looks: false)
                 continue
@@ -462,6 +459,9 @@ final class GroupedListView: NSObject, UICollectionViewDelegate {
     let owner: NodeView
     unowned let host: GroupedListHost
     let collection: UICollectionView
+    /// The list's direction, which its cells are laid out in for the list's
+    /// life (`followDirection`; `GroupedListHost.sync` builds a list again for another).
+    let direction: UISemanticContentAttribute
     private(set) var model = GroupedListModel()
     private(set) var source: GroupedSource!
     private(set) var rows: [UInt32: GroupedListModel.Row] = [:]
@@ -536,10 +536,12 @@ final class GroupedListView: NSObject, UICollectionViewDelegate {
 
     init(owner: NodeView, host: GroupedListHost) {
         self.owner = owner; self.host = host
+        direction = Self.direction(of: owner)
         let collection = GroupedCollectionView(frame: owner.bounds, collectionViewLayout: UICollectionViewFlowLayout())
         collection.listNode = owner
         self.collection = collection
         super.init()
+        followDirection()
         collection.card = { [weak self] index in
             guard let self, let section = section(at: index), section.card else { return nil }
             return section.cardView.flatMap { self.host.presenter.views[$0] }
@@ -698,7 +700,7 @@ final class GroupedListView: NSObject, UICollectionViewDelegate {
         let writes = owner.wrote("background_color")
         let restyled = next.style != previous.style || rethemed || writes != writesGround
         writesGround = writes
-        model = next; followDirection()
+        model = next
         rows = Dictionary(next.sections.flatMap { $0.rows }.map { ($0.view, $0) }, uniquingKeysWith: { a, _ in a })
         carriesCustomRows = rows.values.contains(where: \.custom)
         #if !os(tvOS)

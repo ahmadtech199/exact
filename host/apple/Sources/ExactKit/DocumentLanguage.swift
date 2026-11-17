@@ -24,7 +24,7 @@ extension Presenter {
         #else
         root.semanticContentAttribute = documentDirection == "rtl" ? .forceRightToLeft : .forceLeftToRight
         root.accessibilityLanguage = documentLanguage.isEmpty ? nil : documentLanguage
-        if language != nil { applyChromeDirection() }
+        if language != nil { turnChrome() }
         #endif
         for node in changed {
             let direction = node.style["direction"]?.string ?? documentDirection
@@ -42,19 +42,25 @@ extension Presenter {
     }
 
     #if !os(macOS)
-    /// UIKit's own chrome (the tab bar, navigation bars, sheets) follows the
-    /// window's layout direction, not the root view's: a document in English
-    /// on an Arabic phone would otherwise keep a right-to-left tab bar and back
-    /// button. The window's trait override reaches every controller under it.
-    /// Before the root is in a window, it is tried again on later turns.
-    private func applyChromeDirection(attempt: Int = 0) {
+    /// UIKit's own chrome (a navigation bar's Back, the tab bar's order, a
+    /// sheet's bar) follows the `layoutDirection` trait, which a view's
+    /// `semanticContentAttribute` does not set. The controllers Exact owns
+    /// take the document's direction once it is told one: the navigation
+    /// owner and each presented sheet. The embedder's window and its other
+    /// controllers, another session's among them, keep their own.
+    private func turnChrome() {
         let direction: UITraitEnvironmentLayoutDirection = documentDirection == "rtl" ? .rightToLeft : .leftToRight
-        guard let window = root.window else {
-            if attempt < 50 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.applyChromeDirection(attempt: attempt + 1) } }
-            return
-        }
-        if window.traitOverrides.contains(UITraitLayoutDirection.self), window.traitOverrides.layoutDirection == direction { return }
-        window.traitOverrides.layoutDirection = direction
+        guard chromeDirection != direction else { return }
+        chromeDirection = direction
+        for controller in navigation.chromeOwners + modals.controllers { turnChrome(controller) }
+    }
+
+    /// `controller` takes the document's direction, as it is installed or
+    /// presented and when the direction changes.
+    func turnChrome(_ controller: UIViewController) {
+        guard let direction = chromeDirection,
+              !controller.traitOverrides.contains(UITraitLayoutDirection.self) || controller.traitOverrides.layoutDirection != direction else { return }
+        controller.traitOverrides.layoutDirection = direction
     }
 
     /// A platform view a node holds (a field, a control) is told the
