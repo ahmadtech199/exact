@@ -62,11 +62,16 @@ fn the_ios_roster_moves_the_id_and_its_art_does_not() {
         ("macos", "aarch64-apple-darwin"),
         ("android", "aarch64-linux-android"),
         ("web", "wasm32-unknown-unknown"),
+        // tvOS and watchOS bake as iOS.
+        ("ios", "aarch64-apple-tvos-sim"),
+        ("ios", "aarch64-apple-tvos"),
+        ("ios", "aarch64-apple-watchos-sim"),
+        ("ios", "aarch64-apple-watchos"),
     ] {
         assert_eq!(
             id(&dir, platform, target, ""),
             id(&dir, platform, target, paper),
-            "{platform} builds no alternate"
+            "{target} builds no alternate"
         );
     }
 }

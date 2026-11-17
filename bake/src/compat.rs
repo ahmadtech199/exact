@@ -821,7 +821,8 @@ fn compatibility_with_trust(
     // @ref LLP 1163.000 D2 — the alternate icons' names, in their order, are
     // the iOS binary's: a plan never reaches a binary with another roster.
     // Their art is the binary's alone, so it is not an input here.
-    if platform == "ios" {
+    // tvOS and watchOS bake as iOS but build no alternate (§7).
+    if platform == "ios" && !target.contains("-tvos") && !target.contains("-watchos") {
         let names: Vec<&str> = (manifest.json.get("alternate_icons"))
             .and_then(Value::as_array)
             .map(|items| items.iter().filter_map(|i| i["name"].as_str()).collect())
