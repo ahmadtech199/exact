@@ -110,9 +110,10 @@ final class ContextMenuIOSTests: XCTestCase {
             return try XCTUnwrap(host.contextMenuInteraction(interaction, configuration: configuration, highlightPreviewForItemWithIdentifier: configuration.identifier)).parameters.backgroundColor
         }
         let unfilled = try ground([:])
-        var blue: CGFloat = 0
-        try XCTUnwrap(ground(["background_color": [0, 122, 255, 255]])).getRed(nil, green: nil, blue: &blue, alpha: nil)
-        XCTAssertEqual(blue, 1, accuracy: 0.01, "a filled bubble's ground is its fill")
+        var red: CGFloat = 1, green: CGFloat = 1
+        try XCTUnwrap(ground(["background_color": [0, 122, 255, 255]])).getRed(&red, green: &green, blue: nil, alpha: nil)
+        XCTAssertEqual(red, 0, accuracy: 0.01, "a filled bubble's ground is its fill, not UIKit's white")
+        XCTAssertEqual(green, 122.0 / 255, accuracy: 0.01)
         XCTAssertEqual(try ground(["background_color": [0, 122, 255, 255], "background_clip": "text"]), unfilled,
                        "a fill clipped to the text is drawn in the copy: UIKit's own ground")
     }
