@@ -49,7 +49,11 @@ fn the_ios_roster_moves_the_id_and_its_art_does_not() {
         ios(&format!("{night},{paper}")),
         "the order is the picker's"
     );
-    assert_ne!(one, ios(&paper.replace("Paper", "Card")), "a rename moves it");
+    assert_ne!(
+        one,
+        ios(&paper.replace("Paper", "Card")),
+        "a rename moves it"
+    );
     let redrawn = paper.replace("paper.png", "paper-2.png");
     assert_eq!(one, ios(&redrawn), "new art is the binary's alone");
     let project = paper.replace('}', r#","host":{"ios":{"icon":"art/Paper.icon"}}}"#);

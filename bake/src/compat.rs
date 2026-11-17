@@ -1417,11 +1417,11 @@ mod faces_tests;
 mod notification_service_tests;
 
 #[cfg(test)]
+#[path = "compat_alternate_icons_tests.rs"]
+mod alternate_icons_tests;
+#[cfg(test)]
 #[path = "compat_file_handlers_tests.rs"]
 mod file_handlers_tests;
 #[cfg(test)]
 #[path = "compat_watch_sync_tests.rs"]
 mod watch_sync_tests;
-#[cfg(test)]
-#[path = "compat_alternate_icons_tests.rs"]
-mod alternate_icons_tests;
