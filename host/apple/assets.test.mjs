@@ -1,11 +1,12 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { appleAssets, appleAssetCatalogInventory, rasterIconAssets, iosAssets, iosExecutableRefusal, nativeResourceMappings, plistFile, RESERVED_RESOURCE_ROOTS } from './assets.mjs';
+import { appleAssets, appleAssetCatalogInventory, appleRefusals, rasterIconAssets, iosAssets, iosExecutableRefusal, nativeResourceMappings, plistFile, RESERVED_RESOURCE_ROOTS } from './assets.mjs';
 import { pngPixels } from './image.mjs';
+import { encodePng } from '../../scripts/png.mjs';
 import { useXcode } from './devices.mjs';
 
 test.skipIf(process.platform !== 'darwin')('SVG icon catalogs include independent vector renditions and invalidate on an edit', () => {
@@ -102,3 +103,56 @@ test('a resource directory under a root Exact owns is refused by name, with anot
   for (const root of RESERVED_RESOURCE_ROOTS) for (const [name, text] of [['app.schema.json', schema], ['shipped-data.md', recipe]])
     assert.ok(text.includes(`\`${root}/\``), `${name} names \`${root}/\``);
 });
+
+test.skipIf(process.platform !== 'darwin')('alternate icons are the declared roster: generated, a project and a catalog set, each in Assets.car and in its order', () => {
+  useXcode();
+  const dir = mkdtempSync(resolve(tmpdir(), 'exact-alternate-icons-'));
+  try {
+    const square = (src, colour, hole = false) => {
+      const data = new Uint8Array(1024 * 1024 * 4);
+      for (let i = 0; i < data.length; i += 4) data.set(hole && (i / 4) % 1024 < 512 ? [0, 0, 0, 0] : colour, i);
+      mkdirSync(resolve(dir, src, '..'), { recursive: true });
+      writeFileSync(resolve(dir, src), encodePng({ width: 1024, height: 1024, data }));
+    };
+    square('assets/icon.png', [200, 40, 40, 255]);
+    square('assets/paper.png', [240, 235, 220, 255]);
+    square('assets/paper-dark.png', [40, 40, 40, 255]);
+    square('assets/paper-glyph.png', [0, 0, 0, 255], true);
+    cpSync(new URL('../../scripts/fixtures/Primary.icon', import.meta.url).pathname, resolve(dir, 'art/Night.icon'), { recursive: true });
+    const catalog = resolve(dir, 'modules/apple/Assets.xcassets');
+    const set = (name) => {
+      mkdirSync(resolve(catalog, `${name}.appiconset`), { recursive: true });
+      cpSync(resolve(dir, 'assets/paper-dark.png'), resolve(catalog, `${name}.appiconset/icon.png`));
+      writeFileSync(resolve(catalog, `${name}.appiconset/Contents.json`), JSON.stringify({ images: [{ filename: 'icon.png', idiom: 'universal', platform: 'ios', size: '1024x1024' }], info: { author: 'x', version: 1 } }));
+    };
+    set('Card');
+    const paper = { name: 'Paper', icons: [{ src: 'assets/paper.png' }, { src: 'assets/paper-glyph.png', purpose: 'monochrome' }], color_scheme_dark: { icons: [{ src: 'assets/paper-dark.png' }] } };
+    const night = { name: 'Night', icons: [{ src: 'assets/paper.png' }], host: { ios: { icon: 'art/Night.icon' } } };
+    const card = { name: 'Card', icons: [{ src: 'assets/paper.png' }] };
+    const app = (alternate_icons, icons = [{ src: 'assets/icon.png' }]) => ({ dir, name: 'Alternates', manifest: { icons, alternate_icons } });
+    const keys = iosAssets(app([paper, night, card]), dir, false);
+    assert.deepEqual(keys.ExactAlternateIcons, ['Paper', 'Night', 'Card']);
+    for (const idiom of ['CFBundleIcons', 'CFBundleIcons~ipad']) assert.deepEqual(Object.keys(keys[idiom].CFBundleAlternateIcons).sort(), ['Card', 'Night', 'Paper']);
+    const info = JSON.parse(spawnSync('xcrun', ['assetutil', '--info', resolve(dir, 'Assets.car')], { encoding: 'utf8' }).stdout);
+    for (const name of ['AppIcon', 'Paper', 'Night', 'Card']) assert.ok(info.some(asset => asset.Name === name), name);
+    // The generated alternate has its dark and tinted appearances, as the primary does.
+    assert.deepEqual([...new Set(info.filter(asset => asset.Name === 'Paper').map(asset => asset.Appearance ?? 'any'))].sort(), ['ISAppearanceTintable', 'UIAppearanceDark', 'any']);
+    // The project is in the inventory the receipt records, under the alternate's name.
+    assert.deepEqual(appleAssetCatalogInventory(app([paper, night, card]), 'ios').filter(entry => entry.alternate).map(entry => [entry.alternate, entry.path]), [['Night', 'art/Night.icon']]);
+    assert.deepEqual(appleAssetCatalogInventory(app([paper, night, card]), 'tvos').filter(entry => entry.alternate), []);
+    // What the build refuses, before it compiles.
+    const refused = (manifest, platform = 'ios') => appleRefusals(manifest, platform).join('\n');
+    assert.match(refused(app([paper, night])), /modules\/apple\/Assets\.xcassets\/Card\.appiconset is an app icon that no alternate_icons entry names; declare it there \(\{ "name": "Card"/);
+    assert.equal(refused(app([paper, night]), 'tvos'), '');
+    assert.match(refused(app([card, night, { ...paper, name: 'card' }])), /alternate_icons\[2\]\.name "card" is also the name of modules\/apple\/Assets\.xcassets\/Card\.appiconset/);
+    set('Night');
+    assert.match(refused(app([paper, night, card])), /alternate_icons\[1\]\.host\.ios\.icon: art\/Night\.icon conflicts with modules\/apple\/Assets\.xcassets\/Night\.appiconset; select one icon for the alternate/);
+    rmSync(resolve(catalog, 'Night.appiconset'), { recursive: true });
+    assert.match(refused(app([card, { name: 'Small', icons: [{ src: 'assets/paper-glyph.png' }] }])), /alternate_icons\[1\]\.icons\[0\]: assets\/paper-glyph\.png has transparent pixels, and the iOS icon must be opaque/);
+    assert.match(refused(app([card, paper], [])), /alternate icons require a primary/);
+    assert.equal(refused(app([card, paper, night])), '');
+    // A name actool did not compile is refused, not shipped: a catalog set it cannot read.
+    writeFileSync(resolve(catalog, 'Card.appiconset/Contents.json'), JSON.stringify({ images: [{ filename: 'missing.png', idiom: 'universal', platform: 'ios', size: '1024x1024' }], info: { author: 'x', version: 1 } }));
+    assert.throws(() => iosAssets(app([paper, night, card]), dir, false), /did not compile the alternate icon Card/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 120_000);
