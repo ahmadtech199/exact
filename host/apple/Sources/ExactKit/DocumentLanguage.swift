@@ -24,6 +24,7 @@ extension Presenter {
         #else
         root.semanticContentAttribute = documentDirection == "rtl" ? .forceRightToLeft : .forceLeftToRight
         root.accessibilityLanguage = documentLanguage.isEmpty ? nil : documentLanguage
+        if language != nil { applyChromeDirection() }
         #endif
         for node in changed {
             let direction = node.style["direction"]?.string ?? documentDirection
@@ -41,6 +42,21 @@ extension Presenter {
     }
 
     #if !os(macOS)
+    /// UIKit's own chrome (the tab bar, navigation bars, sheets) follows the
+    /// window's layout direction, not the root view's: a document in English
+    /// on an Arabic phone would otherwise keep a right-to-left tab bar and back
+    /// button. The window's trait override reaches every controller under it.
+    /// Before the root is in a window, it is tried again on later turns.
+    private func applyChromeDirection(attempt: Int = 0) {
+        let direction: UITraitEnvironmentLayoutDirection = documentDirection == "rtl" ? .rightToLeft : .leftToRight
+        guard let window = root.window else {
+            if attempt < 50 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.applyChromeDirection(attempt: attempt + 1) } }
+            return
+        }
+        if window.traitOverrides.contains(UITraitLayoutDirection.self), window.traitOverrides.layoutDirection == direction { return }
+        window.traitOverrides.layoutDirection = direction
+    }
+
     /// A platform view a node holds (a field, a control) is told the
     /// language; a node reads it (`NodeView.accessibilityLanguage`).
     private func setLanguage(_ view: UIView) {

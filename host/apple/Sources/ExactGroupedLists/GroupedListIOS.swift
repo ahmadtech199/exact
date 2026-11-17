@@ -204,6 +204,8 @@ final class GroupedListHost: GroupedLists {
     private(set) var lists: [UInt32: GroupedListView] = [:]
     /// The theme's generation the lists last drew from (`sync`).
     private var theme = ThemeRoles.generation
+    /// The document's direction the lists were last built in (`sync`).
+    private var direction = ""
     /// Each list's margins as the kernel was last told them (`tell`).
     var told: [UInt32: [CGFloat]] = [:]
     /// What each view is covered by, as the kernel was last told (`tellAccessories`).
@@ -236,14 +238,18 @@ final class GroupedListHost: GroupedLists {
         // but every list draws from them: each one updates.
         let rethemed = theme != ThemeRoles.generation
         theme = ThemeRoles.generation
+        // A collection view whose direction turns keeps the cells it laid out
+        // mirrored, so a change of the document's direction builds each list again.
+        let turned = direction != presenter.documentDirection
+        direction = presenter.documentDirection
         for owner in presenter.carrying("listStyle") where owner.kind == "list" {
             live.insert(owner.id)
-            if let list = lists[owner.id], list.owner === owner, let changed, !changed.contains(owner.id), !rethemed {
+            if let list = lists[owner.id], list.owner === owner, let changed, !changed.contains(owner.id), !rethemed, !turned {
                 list.mount(looks: false)
                 continue
             }
             guard let model = model(owner.id) else { continue }
-            if let old = lists[owner.id], old.owner !== owner { old.remove(); lists[owner.id] = nil }
+            if let old = lists[owner.id], old.owner !== owner || turned { old.remove(); lists[owner.id] = nil }
             let list = lists[owner.id] ?? GroupedListView(owner: owner, host: self)
             lists[owner.id] = list
             list.update(model)
