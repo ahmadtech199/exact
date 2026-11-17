@@ -97,6 +97,26 @@ final class ContextMenuIOSTests: XCTestCase {
         XCTAssertNil(try outline(), "no radius: the whole view, as UIKit shows it by default")
     }
 
+    func testTheLiftsGroundIsTheNodesLayerFill() throws {
+        let session = try boot()
+        let host = session.presenter.menus.context
+        let peek = try node(session, "peek")
+        let interaction = try XCTUnwrap(peek.interactions.compactMap { $0 as? UIContextMenuInteraction }.first)
+        func ground(_ style: [String: Any]) throws -> UIColor? {
+            session.presenter.apply(wireBatch([["op": "style", "id": Int(peek.id), "style": style]]))
+            peek.layer.displayIfNeeded()
+            let configuration = try XCTUnwrap(host.contextMenuInteraction(interaction, configurationForMenuAtLocation: .zero))
+            defer { host.contextMenuInteraction(interaction, willEndFor: configuration, animator: nil) }
+            return try XCTUnwrap(host.contextMenuInteraction(interaction, configuration: configuration, highlightPreviewForItemWithIdentifier: configuration.identifier)).parameters.backgroundColor
+        }
+        let unfilled = try ground([:])
+        var blue: CGFloat = 0
+        try XCTUnwrap(ground(["background_color": [0, 122, 255, 255]])).getRed(nil, green: nil, blue: &blue, alpha: nil)
+        XCTAssertEqual(blue, 1, accuracy: 0.01, "a filled bubble's ground is its fill")
+        XCTAssertEqual(try ground(["background_color": [0, 122, 255, 255], "background_clip": "text"]), unfilled,
+                       "a fill clipped to the text is drawn in the copy: UIKit's own ground")
+    }
+
     /// UIKit hides the long-pressed node and grows its highlight in the
     /// preview's container, the route's mount, after the route and at depth 0.
     /// The positioned route ranks above 0, so the highlight takes the route's
