@@ -66,8 +66,10 @@ impl<D: DataSource> Runner<D> {
         decision
     }
 
-    /// The alert's ticket answered: the held call's icon shows, and the
-    /// call and every status source answer it.
+    /// The alert's ticket answered: the held call's icon shows, and the call
+    /// answers it. A status source is asked again only where the app's
+    /// mutation `refreshes` it: `appIcon()` is a fact with no topic (LLP
+    /// 1163.000 D3), and the platform announces nothing.
     pub(in crate::runner) fn app_icon_chosen(&mut self, row: &ModulesRow, token: u64) {
         let held = self.extensions.held.iter().find(|h| h.token == token);
         let icon = held
@@ -81,9 +83,6 @@ impl<D: DataSource> Runner<D> {
         self.extensions.declared.app_icon = icon;
         let answer = self.app_icon_status(row);
         self.release(token, answer);
-        for key in self.app_icon_statuses(&format!("{}.icons", self.plan.str(row.extension))) {
-            self.announce(&key);
-        }
     }
 
     /// The status sources that read agent word `word` (`<extension>.icons`),

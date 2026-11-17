@@ -30,7 +30,7 @@ component App
 
 struct App(PathBuf);
 impl App {
-    fn new(name: &str) -> Self {
+    fn new(name: &str, source: &str) -> Self {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path =
@@ -40,7 +40,7 @@ impl App {
         std::fs::create_dir_all(path.join("node_modules/@exact")).unwrap();
         let to = packages.join("app-icon").canonicalize().unwrap();
         symlink_dir(to, path.join("node_modules/@exact/app-icon")).unwrap();
-        std::fs::write(path.join("app.contract"), APP).unwrap();
+        std::fs::write(path.join("app.contract"), source).unwrap();
         Self(path.canonicalize().unwrap())
     }
 }
@@ -62,7 +62,11 @@ impl exact_runner::DataSource for NoData {
 }
 
 fn boot(name: &str, target: &str) -> (App, Runner<NoData>) {
-    let app = App::new(name);
+    boot_app(name, target, APP)
+}
+
+fn boot_app(name: &str, target: &str, source: &str) -> (App, Runner<NoData>) {
+    let app = App::new(name, source);
     let (plan, _) = contract::compile_path_all(&app.0.join("app.contract"), false)
         .unwrap_or_else(|e| panic!("{e:?}"));
     let mut r = Runner::boot(
@@ -261,4 +265,25 @@ fn a_tool_and_other_targets_are_refused() {
             logs(&r)
         );
     }
+}
+
+/// The status is a fact with no topic (D3): after a change only a mutation
+/// that `refreshes` it reads it again, as on iOS, where nothing announces it.
+#[test]
+fn a_change_refreshes_only_what_the_app_says() {
+    let unrefreshed = APP.replace(" refreshes shown", "");
+    let (_app, mut r) = boot_app("unrefreshed", "ios", &unrefreshed);
+    prefer_icons(&mut r, json!(["Paper"]));
+    pick(&mut r, Some("Paper"));
+    tap(&mut r, "ok");
+    let answered = format!("{:?}", r.derive("answered"));
+    assert!(
+        answered.contains(r#"Str("Paper")"#),
+        "the send answers: {answered}"
+    );
+    assert!(
+        shown(&r).contains("Bool(true), Option(None)"),
+        "read before the change: {}",
+        shown(&r)
+    );
 }
