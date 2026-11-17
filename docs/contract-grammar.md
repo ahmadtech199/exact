@@ -818,6 +818,8 @@ step          = "tap" "midi" STRING ( HEX { HEX } | "clock" NUMBER NUMBER ) NL
               | "expect" "tree" ( "has" | "missing" ) STRING NL
               | "expect" ( "disabled" | "enabled" ) STRING NL  (* a control's `disabled` (LLP 1116.010 D3) *)
               | "expect" "focused" STRING NL         (* the node that holds the keyboard focus *)
+              | "expect" "layout" STRING ( "width" | "height" ) ( "==" | "<=" | ">=" ) NUMBER NL
+                                                     (* its laid-out size, in points *)
               | "expect" "refusal" STRING NL          (* one observed refusal of the named mutation slot *)
               | "expect" "text" STRING "==" STRING NL
               | "expect" "state" IDENT { "." ( IDENT | NUMBER ) }
@@ -948,7 +950,17 @@ Targets are driver test ids. `expect disabled "send"` (`enabled`) reads the cont
 does nothing, and fails its step on every host, `send is disabled`: say what the app refuses
 with `expect disabled`, then `expect enabled` once what enables it has happened. `expect
 focused "picker"` passes when that node holds the keyboard focus, as every host's tree marks it
-(`[focused]` in `agent <host> tree`): after a key moves the focus, or a dialog returns it. Each test is a session of its own, opened with its
+(`[focused]` in `agent <host> tree`): after a key moves the focus, or a dialog returns it.
+
+`expect layout "status-mark" height <= 24` bounds a node's laid-out `width` or `height` with
+`==`, `<=` or `>=`. The size is that of the box `agent <host> layout <target>` prints as `space
+viewport`: points (CSS pixels on the web) at two decimals, with a presentation transform folded
+in (LLP 1012). A failure names the size and the box, so an image a column stretched to its own
+width fails its test: `height of "status-mark" is 310, expected <= 24 (its box is 420×310)`.
+A size that comes from text, a platform control or the window differs by host: bound it, and
+keep `==` for a size the app sets.
+
+Each test is a session of its own, opened with its
 launch lines: `size 1200x800`, `epoch "2026-09-21T12:00:00Z"`, `time-zone
 "America/New_York"`, `locale "fr-FR"` and `seed 7` are the driver's `--size`,
 `--epoch`, `--time-zone`, `--locale` and `--seed`, so they lead the test's steps,

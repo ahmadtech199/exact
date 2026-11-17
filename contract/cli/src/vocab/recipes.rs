@@ -71,6 +71,7 @@ pub const RECIPES: &[(&str, &str)] = &[
     recipe!("number-field"),
     recipe!("numeric-readout"),
     recipe!("oauth"),
+    recipe!("over-the-air-updates"),
     recipe!("permissions"),
     recipe!("persisted-setting"),
     recipe!("phone-manifest"),
@@ -131,6 +132,7 @@ const ALIASES: &[(&str, &str)] = &[
     ("keyframes", "motion"),
     ("@keyframes", "motion"),
     ("tool", "tools"),
+    ("exactDelivery", "over-the-air-updates"),
 ];
 
 /// The recipe a name looks up, as a builder may write it (`grouped-form`,

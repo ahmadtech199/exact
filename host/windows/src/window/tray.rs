@@ -3,6 +3,7 @@
 //! work, and after it the icons and the menu's window follow the tree.
 //! A measured run places none.
 use super::*;
+use crate::tray::placement::Placement;
 use crate::tray::{self, Does, Flyout, Heard, Icon, Input, Op, Shell, Shown};
 use exact_painted::presenter::top::StatusItem;
 
@@ -23,7 +24,7 @@ pub(super) struct Tray {
     app_icon: Option<(u32, Option<Vec<u8>>)>,
     /// The menu's anchor (screen pixels) and scale, and the opening and
     /// revision last painted.
-    anchor: ((i32, i32), f32),
+    anchor: (Placement, f32),
     painted: Option<(u32, u32)>,
     said_image: bool,
     /// The app's `id`, which names the icons' GUIDs in a production build.
@@ -56,7 +57,7 @@ impl Tray {
             epoch: None,
             dark: tray::shell::taskbar_dark(),
             app_icon: None,
-            anchor: ((0, 0), 1.),
+            anchor: (Placement::default(), 1.),
             painted: None,
             said_image: false,
             guid_owner,
@@ -123,11 +124,14 @@ impl<D: DataSource + Default + 'static> App<D> {
                     match tray::does(heard.event, item.press, item.menu, item.disabled) {
                         Does::Press => p.status_press(item.node, now),
                         Does::Menu { keyboard } => {
-                            let (room, scale) = Flyout::room(heard.at);
+                            let icon = tray.shell.as_ref().and_then(|shell| shell.rect(heard.icon));
+                            let (anchor, scale) = Flyout::anchor(icon, heard.at);
+                            let (width, height) = anchor.area.size();
+                            let room = (width as f32 / scale, height as f32 / scale);
                             // The menu ends with Exit whenever an icon is
                             // placed, as this one is (D7).
                             if p.open_status_menu(item.node, room, true, keyboard, now) {
-                                tray.anchor = (heard.at, scale);
+                                tray.anchor = (anchor, scale);
                             }
                         }
                         Does::Nothing => {}

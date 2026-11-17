@@ -1,7 +1,7 @@
 //! The notification area (LLP 1133.025 D4): each `-exact-menu="status"`
 //! button is an icon there, by `Shell_NotifyIconW` under
 //! `NOTIFYICON_VERSION_4`, and its `popovertarget` menu is the shared
-//! presenter's MenuFlyout in a popup window of its own at the pointer
+//! presenter's MenuFlyout in a popup window of its own beside the icon
 //! (`tray/flyout.rs`, LLP 1115.004 D10.1), so it opens with the app's window
 //! hidden.
 //!
@@ -299,6 +299,8 @@ pub(crate) fn wheel(delta: i16, lines: u32) -> f32 {
 
 #[cfg(windows)]
 mod flyout;
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) mod placement;
 #[cfg(windows)]
 pub(crate) mod shell;
 #[cfg(windows)]

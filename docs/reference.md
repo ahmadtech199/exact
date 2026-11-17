@@ -124,7 +124,7 @@ The driver imports wasm-bindgen glue (`snapback4/ts/generated/`, never
 committed). The bake of an app that mounts the driver writes it with
 `snapback4/web/build.mjs`, which builds only when the inputs recorded in the
 glue's header have changed, and needs the `wasm32-unknown-unknown` target and
-`wasm-bindgen` 0.2.127 (`cargo install wasm-bindgen-cli --version 0.2.127`).
+`wasm-bindgen` 0.2.130 (`cargo install wasm-bindgen-cli --version 0.2.130`).
 
 The canonical [Messages](../apps/messages/README.md) app is the Exact port of Expo's
 chat demo, with model conversations through a local OpenRouter service. It belongs
@@ -344,7 +344,9 @@ the plan, so this is not an original-source revision guarantee.
 
 `fmt --stdout` previews source-preserving formatting; `--check` prints a diff
 and exits nonzero when formatting differs. Plain `fmt <file>` writes the result
-explicitly. Formatting never runs automatically on save.
+explicitly. `fmt --stdin <file>` formats stdin's text to stdout, an editor's
+unsaved buffer: the file names the text and is not read. Formatting never runs
+automatically on save.
 
 ## Contract evaluation limits
 
@@ -1364,6 +1366,28 @@ receipt, and signed GPU frameworks (primary and named modules). Copy those
 frameworks intact into the embedding app's `Frameworks/`; their binaries must
 retain the baked digests.
 
+### Optional Apple host products
+
+An external Swift host links `ExactKit` plus each capability product its plans
+use, then calls that product's public `install()` before creating sessions.
+The generated `--embed` composition lists the capabilities to link.
+
+| Product | Capability | Installation |
+| --- | --- | --- |
+| `ExactMarkdown` | Markdown text and editing | `ExactMarkdown.install()` |
+| `ExactDrag` | Reorder, height and transform drags | `ExactDrag.install()` |
+| `ExactGroupedLists` | Native grouped lists | `ExactGroupedLists.install()` |
+| `ExactSurfaces` | GPU and Canvas surfaces | `ExactSurfaces.install()` |
+| `ExactMediaPicker` | Native media picking | `ExactMediaPicker.install()` |
+| `ExactAuthSession` | Authentication sessions | `ExactAuthSession.install()` |
+| `ExactNumerals` | Numeric content transitions | `ExactNumerals.install()` |
+| `ExactTips` | Platform tips | `ExactTips.install()` |
+| `ExactPresence` | Native presence checks | `ExactPresence.install()` |
+
+Development builds log a missing Markdown or drag installation once per session,
+with the product and installation call. Without it, Markdown remains literal
+text and drag gestures are unavailable.
+
 ### Mac development signing
 
 `EXACT_IDENTITY=<certificate-sha1>` selects a Keychain signing identity;
@@ -1379,6 +1403,14 @@ resolve it, the build refuses and names `DEVELOPMENT_TEAM=<team-id>`,
 including an ordinary `secret.keep` app. With no identity at all, a build without
 profile requirements or extensions can still sign ad hoc. Developer ID profile
 ambiguity names `EXACT_DEVELOPER_ID=<sha1>`, the release identity selector.
+
+Local builds made by `mac --bundle` omit the hardened runtime, so an ad hoc
+host can load its ad hoc native modules. An external host signed ad hoc with
+`codesign --options runtime` can start and pass strict signature verification,
+but macOS library validation refuses its native modules because neither has a
+Team ID. For a hardened host, sign the host and every native module with valid
+certificates of the same team. A successful launch alone does not check module
+loading; exercise the plan's native view or module call too.
 
 Certificate signing keeps the app's login Keychain access stable across
 rebuilds (LLP 1018 D7). Before each local development sign (`--timestamp=none`),
@@ -1396,7 +1428,9 @@ Some entitlements hold on a Mac only under a provisioning profile that
 authorizes them (Apple TN3125), and the Mac build signs them from one (LLP
 1133.010 D7): push's `com.apple.developer.aps-environment` (`device.push`), App
 Attest's environment (`device.attestation`), the Declared Age Range
-(`device.age-range`), Group Activities (`device.shareplay`), the iCloud key-value store (`device.icloud-kv`), Sensitive Content Analysis (`device.sensitive-content-analysis`), the keychain group a locked secret is kept in
+(`device.age-range`), Group Activities (`device.shareplay`), CloudKit
+(`device.cloudkit`), the iCloud key-value store (`device.icloud-kv`), Sensitive
+Content Analysis (`device.sensitive-content-analysis`), the keychain group a locked secret is kept in
 (`secret.keep` with a presence policy), and a passkey's associated domains
 (`auth.passkey`). An app whose grants need any of them is built from the
 newest installed macOS profile for its id (or the team's wildcard) that allows
@@ -1413,7 +1447,8 @@ With a profile, the build signs with its team's identity (Apple Development, or 
 release; one `EXACT_IDENTITY` or `EXACT_DEVELOPER_ID` names must be of that
 kind and team, or the build is refused), writes the application identifier,
 the team and each entitlement (an environment `development` under a
-development profile, `production` otherwise), embeds the profile as
+development profile, `production` otherwise; CloudKit uses `Development` and
+`Production`), embeds the profile as
 `Contents/embedded.provisionprofile`, and always assembles the `.app`, where
 the profile holds.
 
@@ -1422,12 +1457,27 @@ for each grant, what the app then reports (`available: false`,
 `NotSupportedError`). A release build is refused (`grant-needs-profile`) for
 App Attest, the age range, the iCloud key-value store, Sensitive Content
 Analysis, a passkey or a locked secret that is not `optional`; one granting
-push or SharePlay ships without it, the package reporting it unavailable.
+push, SharePlay or CloudKit ships without it, the package reporting it unavailable.
 An app with Mac widgets signs both under one profile, of the widgets' team,
 chosen among the profiles that grant the widgets' App Group and shared
 Keychain group and the grants' entitlements; with none that grants both, the
 grants sign nothing. An ad hoc build (`EXACT_IDENTITY=-`) signs no profile's
 entitlements.
+
+`device.cloudkit` derives one container, `iCloud.<bundle id>`, or selects the one
+written as `device.cloudkit iCloud.<name>`; it takes no purpose. A second container
+is refused. On iOS and iPadOS, and under a Mac profile, it signs
+`com.apple.developer.icloud-services = ["CloudKit"]`,
+`com.apple.developer.icloud-container-identifiers = [<container>]` and
+`com.apple.developer.icloud-container-environment = "Development"` or `"Production"`
+by the signature's kind. A distribution archive uses `Production` (ITMS-90046).
+The profile's services must include CloudKit and its containers must allow the
+selected identifier; a profile for another container is refused. No push or
+`remote-notification` mode is derived, and no `ubiquity-*` entitlement. tvOS,
+App Clips and extensions sign none. A bound package declaring
+`"hostEvents": ["cloudkit-share"]` receives shares and gets `CKSharingSupported`
+and `ExactHostEvents` only where the grant is signed; a Mac build without a
+profile claims neither.
 
 ### Web CI preparation
 
@@ -1654,7 +1704,8 @@ change ships as a new build and a production build needs no update signing
 keys or receipt. At `"A"` it takes signed plans, assets and TypeScript
 modules, never native code (LLP 1030.006), and a production build needs
 `deploy.signing.keys` and `EXACT_UPDATE_RECEIPT` or `EXACT_UPDATE_GENESIS=1`,
-as iOS does.
+as iOS does. The [over-the-air updates recipe](recipes/over-the-air-updates.md)
+covers the key, `app.json`, the first build, publishing and an in-app banner.
 
 ### Build an iOS app on a CI machine
 
@@ -1741,6 +1792,103 @@ is `true` in a binary baked with production trust (for example, Apple's
 `--release`, `--distribution`, or `exact release`) and `false` in a development
 build.
 
+## Over-the-air updates
+
+The [recipe](recipes/over-the-air-updates.md) goes from a signing key to an
+update banner. This section is what it leaves out (LLP 1030).
+
+`keygen` writes the private key to `~/.config/exact/keys/<id>.pem`, or to the
+directory `EXACT_SIGNING_KEY_DIR` names; keep it out of the repository. A
+binary takes only updates signed by a key its `app.json` named when it was
+built. The web has no update store: there `exactDelivery().staged` stays
+false.
+
+### The origin a binary checks
+
+A production binary checks the origin its build read from
+`deploy.channels.<channel>` in `app.json`, and no other. Serve at that URL,
+over HTTPS, the directory that `deploy --origin <dir>` and `push --origin
+<dir>` write. In both commands `--origin` takes precedence over the manifest.
+An `https://` origin is read-only to them, so `deploy --yes` and `push` need
+`--origin` naming the directory it serves.
+
+The channel `"appdrop"` is AppDrop's origin for the signing key, with no
+account and no server. Run `deploy` and `push` without `--origin`: with a
+directory they publish there while installed apps check AppDrop. AppDrop
+holds update streams only, so `deploy` publishes no web root to it.
+
+`bun exact.mjs serve --origin <dir>` serves a directory that `deploy`
+published a web root to, on this machine (port 8765, loopback unless
+`--lan`). To watch an app take an update locally, name that URL as the
+channel before the release build (`"prod": "http://127.0.0.1:8765"`): a
+binary built with another URL never asks the local server, and logs `exact
+update: refused:` with the URL it could not reach.
+
+### Starting and continuing a stream
+
+A stream is a channel and a compatibility id: the binaries that run the same
+updates. A release build for a platform with an update store bakes production
+trust and needs one of two variables, and refuses without either:
+
+- `EXACT_UPDATE_GENESIS=1` starts a new stream. The binary embeds sequence
+  zero.
+- `EXACT_UPDATE_RECEIPT=<file>` builds a binary for a stream that has
+  releases. The file is a release record that `deploy` or `push` wrote,
+  `<origin dir>/.exact/<channel>/<compatibility id>/releases/<release>.json`,
+  and it must name exactly the plan and assets the build embeds. The binary
+  embeds that release's sequence.
+
+`deploy.store.<platform>` is `"A"` for a binary with an update store and
+`"0"` for one without, on `ios`, `macos`, `linux` and `android`. The first
+`ios`, `mac` or `linux` build of an app writes `"0"` for its platform, and an
+absent `android` is `"0"`, so set `"A"` for each platform that takes updates
+before its release build.
+
+### What `deploy` publishes
+
+`deploy` builds each platform's update, which takes minutes, and its dry run
+prints what each stream takes as an update and what needs a new binary. For
+iOS it compiles the device target, which a Mac set up only for the simulator
+lacks: `bun <exact2>/scripts/exact.mjs setup --check` names what is missing,
+and `--platform <p>`, repeated, publishes only the platforms named.
+
+`deploy` publishes the commit at `HEAD` of the app's repository and refuses
+when the files it reads differ from that commit. `--dirty` publishes the
+working tree instead, uncommitted edits and files git ignores included; the
+table is marked `(DIRTY)` and lists them. An app outside the Exact checkout
+is refused without `--dirty` even when committed, because ignored files count
+as source: the `.exact/` its builds write, and generated files in the Exact
+checkout. So commit, pass `--dirty`, and read the list. An app's first build
+for a platform edits `app.json`: commit after it. `push` always publishes the
+working tree.
+
+### When a staged update applies
+
+- `next-launch`: the next cold launch boots it; `deliveryActivate()` applies
+  it sooner.
+- `app-decides`: only `deliveryActivate()` applies it. No launch boots it,
+  and `staged` stays true across launches.
+- `immediate`: it applies as soon as a check stages it while the app is in
+  the foreground, otherwise when the app next comes to the foreground.
+
+Applying an update while the app runs (`deliveryActivate()`, `immediate`)
+waits until no request is in flight when the update carries a data module,
+as every update of an app with `app.ts` does. A resource still loading, a
+mutation still sending and a stream that has not delivered its first value
+are in flight; a stream that has is not. The running app keeps the ask and
+applies the update when the requests finish or are cancelled, without a
+second `deliveryActivate()`. The wait has no deadline and cancels nothing, so
+a request that never ends, such as a socket that never connects, holds the
+update for as long as the app runs. The next cold launch boots it under
+`next-launch` and `immediate`; under `app-decides` it is still staged and
+waits for `deliveryActivate()` again. An update without a data module applies
+with requests in flight. On Android, applying also waits for a turn with no
+touch held, no text being composed and no Back gesture in progress.
+
+A check runs when the app comes to the foreground, at most once a minute,
+and every `deploy.check.interval` seconds (900 by default) while it stays
+there; never in the background. `deliveryCheck()` checks at once.
+
 ## Install a development build beside the release one (variants)
 
 A variant is the app under another identity, so a development or staging build installs beside the store's
@@ -1790,6 +1938,23 @@ specific grant advice only where tests apply those lines, including companion
 grants, through the bake and platform writer. Other derived keys cannot be set
 there. For a key Exact never writes, record a `bun exact.mjs feedback note` from
 the app directory naming the key and what the native module needs.
+
+### Language and direction on macOS
+
+The Mac window and a document's unsaid layout direction follow AppKit's process
+direction. An Arabic strings table alone leaves them left to right on an English
+Mac. Set `host.macos.layoutDirection: "rtl"` in `app.json` to mirror the window,
+split view, toolbar and sidebar, even with an English table. Omission or `"auto"`
+keeps AppKit's direction. A launch argument naming `AppleTextDirection` or
+`NSForceRightToLeftWritingDirection` takes precedence over the setting.
+
+The setting applies before AppKit starts and requires a new binary. The host
+checks both the application's direction and each window's
+[`windowTitlebarLayoutDirection`](https://developer.apple.com/documentation/appkit/nswindow/windowtitlebarlayoutdirection).
+A mismatch prints a development diagnostic; the agent's `state.layoutDirection`
+reports the request, launch override, applied directions and whether both are
+right to left. `language.dir` reports the document's applied layout direction.
+iOS and the web continue to take their direction from the strings table.
 
 ## Apple privacy manifests
 
@@ -4830,7 +4995,7 @@ below any later popover, without exposing the page or a lower modal.
 
 | Scope | Swift (`ExactModule`) | Page module (`modules/web/index.js`) |
 |---|---|---|
-| A node marked `hatch="word"` | `element(_:)`, `elementEnded(_:)`; a frame's `elementConfiguration(_:_:)` | `element(e)`, `elementEnded(e)` |
+| A node marked `hatch="word"` | `element(_:)`, `elementEnded(_:)`; a frame or video's `elementConfiguration(_:_:)` | `element(e)`, `elementEnded(e)` |
 | A route, a navigation stack, tabs (iOS; the web's elements) | `route`, `routeEnded`, `navigation`, `tabs`, `tabContainer` | `route`, `routeEnded`, `navigation`, `tabs` |
 | The window toolbar (macOS) | `toolbar(_:)` | none |
 | The app: its facts, by the web's names, and the root node's `data-*` words as `data` (each in `app.json` `data`, which `hatch --app` adds; Swift reads `data-booted` as `app.data[.booted]`) | `app(_:)`, `appEnded(_:)` | `app(a)`, `appEnded(a)` |
@@ -4865,6 +5030,16 @@ there: the node may not be in the tree yet. A hatched frame's first web view
 waits for the module to connect, so this call comes before the web view is
 made. The web view then arrives at `built`; if `built` has no `platform` (as
 on macOS or in an iOS list row), the `changed` after this call hands it.
+
+A hatched `video` on Apple calls `elementConfiguration(_:_:)` synchronously
+before each item, including a changed source or `load(id)`. It hands an
+`NSMutableDictionary`: `url` is the resolved source `URL`; set `asset` to an
+`AVURLAsset` for custom loading. The arm applies the authored playback and
+rendition preferences to that asset's item. `element.platform` then hands the
+`AVPlayer` at `built`, or `changed` for a deferred player. The arm owns the item,
+playback and authored preferences; retain any resource-loader delegate yourself.
+See [video loading](contract-for-agents.md#sound-midi-and-media) for an example
+and AirPlay/FairPlay limits. Android has no video player hook yet.
 
 **Linux, Windows and Android paint their own pixels**, so there is no platform
 object to hand over. A hatch there is Rust: one type that implements
@@ -5348,6 +5523,14 @@ crate: the source digest reads every arm, so an edit to any of them moves it
 `target_arch = "wasm32"` arms, never one for the device's `target_os`. A crate
 whose module can be replaced should branch on nothing else
 ([pitfall](agent-pitfalls.md#actions)).
+
+The digest also covers the path crates the data crate is built from, and
+theirs in turn, including an optional one no default feature enables: the
+build that links the crate can enable it. One case is not covered. A path
+crate that `[patch]` puts in place of a registry or git dependency counts
+only where Cargo's default-feature resolve reaches it. When only an optional
+dependency that resolve leaves off reaches it, an edit to it does not move
+the id; declare that dependency with `path` to have it counted.
 
 The repository's app entries use `contract::rust_entry` to select a concrete
 factory at bake time. A custom host adapter must do the same (and depend on

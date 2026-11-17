@@ -1,11 +1,11 @@
 //! The icons' hidden window and what `Shell_NotifyIconW` is told.
 #![allow(unsafe_code)]
-use super::{Callback, Icon, CALLBACK};
+use super::{placement::Rect, Callback, Icon, CALLBACK};
 use std::{cell::RefCell, rc::Rc};
 use windows_sys::{
     core::GUID,
     Win32::{
-        Foundation::HWND,
+        Foundation::{HWND, RECT},
         Graphics::Gdi::{
             CreateBitmap, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GdiFlush,
             SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP,
@@ -17,9 +17,10 @@ use windows_sys::{
         UI::{
             HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi},
             Shell::{
-                DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass, Shell_NotifyIconW,
-                NIF_GUID, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE,
-                NIM_MODIFY, NIM_SETVERSION, NOTIFYICONDATAW, NOTIFYICON_VERSION_4,
+                DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass, Shell_NotifyIconGetRect,
+                Shell_NotifyIconW, NIF_GUID, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD,
+                NIM_DELETE, NIM_MODIFY, NIM_SETVERSION, NOTIFYICONDATAW, NOTIFYICONIDENTIFIER,
+                NOTIFYICON_VERSION_4,
             },
             WindowsAndMessaging::{
                 CreateIconIndirect, CreateWindowExW, DestroyIcon, DestroyWindow, DrawIconEx,
@@ -138,6 +139,22 @@ impl Shell {
 
     pub(crate) fn take(&self) -> Vec<Heard> {
         std::mem::take(&mut *self.state.heard.borrow_mut())
+    }
+
+    /// The icon's current screen rectangle, using the identity the shell accepted.
+    pub(crate) fn rect(&self, id: u16) -> Option<Rect> {
+        let placed = self.icons.iter().find(|p| p.icon.id == id)?;
+        let identifier = NOTIFYICONIDENTIFIER {
+            cbSize: std::mem::size_of::<NOTIFYICONIDENTIFIER>() as u32,
+            hWnd: self.window,
+            uID: u32::from(id),
+            guidItem: GUID::from_u128(placed.icon.guid.filter(|_| placed.by_guid).unwrap_or(0)),
+        };
+        let mut rect = RECT::default();
+        (unsafe { Shell_NotifyIconGetRect(&identifier, &mut rect) } == 0
+            && rect.right > rect.left
+            && rect.bottom > rect.top)
+            .then_some(Rect::from(rect))
     }
 
     /// The structure that names icon `id`, by `guid` when given.

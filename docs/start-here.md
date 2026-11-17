@@ -219,6 +219,7 @@ For EAS Build, use [iOS](recipes/eas-ios.md) or [Android](recipes/eas-android.md
 |ports, Bun, Chrome and its stores|`ports-and-browsers`|
 |porting an app, a release build, helpers sharing a port|`porting-and-release`|
 |a release build for a phone: the commands, signing, where the artifact lands|`mobile-build`|
+|updates an installed app takes over the air: the key, `deploy` in app.json, the first stream, `deploy`, `push`, an "update ready" banner|`over-the-air-updates`|
 |a metronome, drum machine, sequencer or MIDI app: sound, MIDI, a transport (built in; write no native audio module)|`sequencer`; ["Sound, MIDI and media"](contract-for-agents.md#sound-midi-and-media); `apps/metronome`|
 |transitions, keyframes, exit and layout animation|`motion`|
 |brand colours, light and dark, icon tokens|`theme`, `forma`|

@@ -238,7 +238,13 @@ Linux host, and the iOS cross compiler. On Windows, use WSL 2 with Ubuntu 24.04 
   not needed.
 - **Google Chrome.** The agent drives the web through headless Chrome. Set `CHROME` to
   use another Chromium.
-- **Xcode 27.1 or later**, for Apple builds on macOS (`exact setup --check` checks it). For iOS builds on Linux/WSL, install
+- **Apple SDKs and Swift**, for Apple builds on macOS (`exact setup --check` checks both).
+  The host needs the macOS 26.0 SDK (Xcode 26.0+), iOS 27.1 SDK (Xcode 27.1+),
+  or tvOS 27.0 SDK (Xcode 27.0+), and Swift 6.4 or later. Swift 6.4 is tested;
+  Swift 6.2.4 cannot type-check the host. The SDK and compiler floors live in
+  [`host/apple/devices.mjs`](host/apple/devices.mjs).
+  Swift builds use `xcrun`'s selected compiler; select it with `DEVELOPER_DIR` or `TOOLCHAINS`.
+  For iOS builds on Linux/WSL, install
   [Swift 6.4.2](https://www.swift.org/install/linux/),
   [xtool 1.24.0](https://github.com/xtool-org/xtool/releases/tag/1.24.0),
   [LLVM 23](https://apt.llvm.org/), and
@@ -782,7 +788,9 @@ else here was admitted because a real app needed it.
   native controls over Contract and the kernel with an app-local Win32 presenter;
   general Windows control parity and delivery remain unfinished.
   A `-exact-menu="status"` button is a notification-area icon with a painted
-  menu (LLP 1133.025 D4), built and not yet run on Windows.
+  menu (LLP 1133.025 D4), verified on Windows 11 for a hidden launch,
+  pointer input, checkbox state and Exit. Menu placement beside an
+  auto-hide taskbar still needs a Windows run.
 - **Android.** Admitted (2026-10-07) and early. An app builds for Android and runs
   on an emulator or a phone: `bun exact.mjs android` builds it, `bun exact.mjs test
   android` runs its tests, and `bun exact.mjs agent android …` drives it

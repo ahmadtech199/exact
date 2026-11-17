@@ -3064,6 +3064,60 @@ natural size (300×150 until the metadata arrives), even when it is absolutely
 positioned with `inset=0`, since opposing insets do not stretch a replaced element
 (CSS 2.1 §10.3.8, §10.6.5), and an adaptive stream's box changes with each
 rendition. To fill a box, write `width="100%" height="100%"` with `object-fit`.
+
+On Apple, the player normally caps HLS renditions to the video's box.
+`preferredMaximumResolution="640x360"` sets an author bound below that.
+`startsOnFirstEligibleVariant=true` starts from the first eligible variant in
+playlist order, bounded by what the box needs and the author bound; a playlist
+without rendition sizes uses AVFoundation's normal selection. Playlist order
+plus this flag is the start control; Exact does not reorder variants or offer
+a `start-quality` attribute. See Apple's
+[`startsOnFirstEligibleVariant`](https://developer.apple.com/documentation/avfoundation/avplayeritem/startsonfirsteligiblevariant).
+
+For custom loading on Apple, mark the video `hatch="clip"` and declare that
+element hatch for `ios` and `macos` in `app.json`. The app's Swift in
+`modules/apple/` receives `elementConfiguration(_:_:)` synchronously before
+each item is made, including source changes and `load(id)`, in list rows too.
+The configuration is an `NSMutableDictionary`: `url` is the resolved source
+`URL`; set `asset` to an `AVURLAsset` with your options or resource loader.
+Leaving `asset` unset keeps normal loading. A cold launch waits for hatch
+registration. The supplied asset goes through the same rendition bounds and
+start preference. Do not load its tracks to warm it: that can select a rendition
+before the item exists. At `built`, or `changed` if the player was deferred,
+`element.platform` is the `AVPlayer`. Exact owns its item, playback and authored
+preferences; configure loading here and add observations afterward.
+
+For example, an app that implements a `PlaylistLoader` delegate can fetch a
+multivariant playlist, put its chosen start first, make the remaining URIs
+absolute, and serve it under its own scheme:
+
+```swift
+import AVFoundation
+
+// In the app's ExactModule subclass; PlaylistLoader is the app's delegate.
+private var loaders: [ObjectIdentifier: PlaylistLoader] = [:]
+
+override func elementConfiguration(_ element: ExactElement, _ configuration: AnyObject) {
+    guard element.hatch == .clip, let config = configuration as? NSMutableDictionary,
+          let source = config["url"] as? URL else { return }
+    let loader = PlaylistLoader(source: source)
+    let asset = AVURLAsset(url: loader.url)
+    asset.resourceLoader.setDelegate(loader, queue: loader.queue)
+    loaders[ObjectIdentifier(element)] = loader
+    config["asset"] = asset
+}
+
+override func elementEnded(_ element: ExactElement) {
+    loaders.removeValue(forKey: ObjectIdentifier(element))
+}
+```
+
+Keep the delegate alive while its asset is in use: the resource loader holds it
+[weakly](https://developer.apple.com/documentation/avfoundation/avassetresourceloader/delegate).
+A private scheme changes AirPlay and FairPlay loading behaviour; the app must
+test those paths with its loader. This video hook is Apple only. Android has no
+video player hook yet; the web uses its own media element.
+
 `audio` stays HTML's player for long media
 (a song, a podcast: `video`'s props and events with no picture, LLP 1042 §8).
 
@@ -3422,6 +3476,17 @@ writes the line, the build signs the row's entitlements, and `exact deploy`'s re
 it. `device.shareplay`, added for such a package, signs Group Activities'
 `com.apple.developer.group-session` on iOS and, under a provisioning profile that allows it,
 on the Mac; not on tvOS. A Mac build without such a profile signs none and still ships.
+`device.cloudkit` names no purpose and derives the container `iCloud.<bundle id>`;
+`device.cloudkit iCloud.<name>` selects another container. A second container is refused.
+On iOS and iPadOS, and under a provisioning profile on the Mac, it signs
+`com.apple.developer.icloud-services = ["CloudKit"]`,
+`com.apple.developer.icloud-container-identifiers = [<container>]` and
+`com.apple.developer.icloud-container-environment`: `Development` under a development
+signature, `Production` under a distribution signature, including an archive.
+The profile must allow CloudKit and the selected container by value. It grants no push,
+background notification mode or iCloud Documents entitlement. tvOS, App Clips and extensions
+sign none. A Mac release without a suitable profile ships with CloudKit unavailable and
+claims no shares. A package receiving shares declares the host event below.
 `device.icloud-kv`, for an app module that uses `NSUbiquitousKeyValueStore`, names no purpose
 and signs `com.apple.developer.ubiquity-kvstore-identifier` with the app's application
 identifier (`<team prefix>.<bundle id>`, `SIMULATORX.<bundle id>` on a simulator) on iOS and
@@ -3442,7 +3507,7 @@ that takes it drains it, even when it came before the package's module loaded. T
 
 | Event | Platforms | Delivered by | Needs | Writes |
 | --- | --- | --- | --- | --- |
-| `cloudkit-share` | iOS, macOS | iOS: the scene delegate's `windowScene(_:userDidAcceptCloudKitShareWith:)`, or the connection options' `cloudKitShareMetadata` when it launched the app; macOS: the application delegate's `application(_:userDidAcceptCloudKitShareWith:)` | `device.cloudkit`, not yet a row: no build takes it | `CKSharingSupported` |
+| `cloudkit-share` | iOS, macOS | iOS: the scene delegate's `windowScene(_:userDidAcceptCloudKitShareWith:)`, or the connection options' `cloudKitShareMetadata` when it launched the app; macOS: the application delegate's `application(_:userDidAcceptCloudKitShareWith:)` | `device.cloudkit`, signed in this build | `CKSharingSupported` |
 
 The Apple implementation declares what it takes, `"hostEvents": ["cloudkit-share"]`, and its
 interface `"start": "load"`, so an instance exists once the module loads. The build refuses,
@@ -3557,9 +3622,16 @@ viewport, which an unpresented route has when the navigation root scrolls or nat
 chrome uses `interactive-widget="resizes-visual"`; else nil. A native list's scroll
 view is its collection view. UIKit's
 `contentScrollView(for: .top)` reports Exact's scroller only while it sits under the
-bar. A top-edge selection or nil reaches the hatch when Exact next prepares the
-route, at the next authored update (after a nil, possibly within the call), and the
-hatch is called again then.
+bar. UIKit's bar follows a selection at once. Exact's own layout of the route follows
+it (the scroller its title collapses with, the scroll views UIKit insets, and the
+route's clearance) at the route's next layout or as the route appears. A selection made
+during a push or a pop on screen, a presentation or a dismissal, on a route that does not
+appear in it, follows when it ends, unless a batch meanwhile prepares the route's stack; a
+transition that a stack off screen keeps until its tab shows again does not hold it.
+Until then, after a nil, `contentScrollView(for:)` returns nil. A top-edge
+selection or nil reaches the hatch when the hatch next runs, which Exact does as it
+prepares the route with a changed projection: once the runtime's answer to a changed
+clearance is applied, or else at the next authored update.
 
 The containing navigation controller still owns one shared navigation bar. UIKit
 decides where its large title and each pane's edge effect appear; the panes keep
@@ -4496,6 +4568,12 @@ click outside dismisses; iOS keeps the alert, since an action sheet drops a
 lone Cancel in an iPad's popover. The action that learns of the failure sets the state its `text`
 reads and calls `showModal("<id>")` ([tell the person something failed](recipes/error-alert.md)).
 
+An alert's own `font-family`, written on the `dialog` or its class, applies to
+its title, message and button labels on web, Linux, Android and Windows.
+Android and Windows keep the platform face when the family is only inherited.
+iOS and macOS keep the system face: `UIAlertController` and `NSAlert` have no
+public font API, so the compiler warns when an alert requests a family there.
+
 A prompt (a rename's, `Alert.prompt`) is the alert with a text field: an
 `input` among its rows, which counts as its message when it has no `text`:
 
@@ -4674,6 +4752,19 @@ the name is a known attribute. Declaring a layout attribute as a view prop is
 the box and set no view props; write `object-fit` on the camera tag to configure its
 viewfinder. A renamed spelling (`fontSize`) is refused whatever is declared. Do not
 turn a missing widget or canvas operation into invented Contract syntax.
+
+Under the agent, `@exact/camera` accepts
+`prefer extension camera.picture={"path":"assets/test/card.jpg"}` for a still,
+or `prefer extension camera.clip={"path":"assets/test/walk.mp4"}` for a clip.
+Both name app assets. A clip is decoded once and loops on the session clock,
+from the track's start: `clock +100` advances its frame by 100 ms. The
+viewfinder, a package reading the track's picture and `takePhoto` receive
+the same frame. A screenshot sequence follows that clock too. The journal
+records the clip's SHA-256, not its frames. Clear either preference with
+`=clear` before setting the other; setting both is refused in the journal.
+This works on Android, iOS, macOS and web; Linux has no camera substitute.
+For a fixture shared across these hosts use H.264 MP4 and a web browser with
+H.264 WebCodecs support. See the [camera package's guide](../packages/camera/test/checklist.md#agent-pictures-and-clips).
 
 On Apple, each package's Swift library loads at its first call, view, picture,
 authentication or wake. Permission, preference and foreground updates are kept
@@ -4971,7 +5062,8 @@ component App
     canvas surface=world
 ```
 
-A canvas without a metrics resource does no reporting work. Snapshots arrive at most
+A canvas without an active metrics resource does no HUD reporting work. A resource
+whose `when` condition is false collects nothing. Snapshots arrive at most
 once per second while the canvas is visible, including while it is idle. Before
 its first snapshot, after disposal, and for unsupported measurements, fields are `none`. Values
 never enter kept answers, world saves, replay or simulation hashes.
@@ -5120,12 +5212,14 @@ setting calls `setLocale("de")` (`setLocale("")` for System) in its action; the
 choice is kept across launches and read before the first frame. Formatting
 functions accept a narrow set of literal formats; app wording is an app `fn`.
 On Apple platforms the tables are the bundle's localizations, base first, so the
-system's own words and the direction of the chrome it draws (bars, the Mac's
-split view, sidebar and toolbar) follow the table it picks. AppKit mirrors a
-window only on a Mac whose system language is right to left, as it does for any
-hand-built app, and on the Mac a direction you leave unsaid is the window's: an
-Arabic table on an English Mac is left to right throughout, and `state` reports
-`language.dir` as `ltr`. Elsewhere it is the table's. A `direction` you write
+system's own words follow the table it picks. On the Mac a direction you leave
+unsaid is AppKit's process direction: an Arabic table on an English Mac leaves
+the window and panes left to right, and `state` reports `language.dir` as `ltr`.
+Set `host.macos.layoutDirection: "rtl"` in `app.json` to mirror the whole window,
+including the split view, toolbar and sidebar, even with an English table.
+Omission or `"auto"` keeps AppKit's direction; a launch argument naming either
+`AppleTextDirection` or `NSForceRightToLeftWritingDirection` takes precedence.
+Elsewhere the direction is the table's. A `direction` you write
 wins on every host. `language.dir` is the layout direction: on the Mac, text
 under no written `direction` takes each paragraph's base direction from its
 first letter, as an `NSTextField` does, so an Arabic sentence in a left-to-right
@@ -5816,7 +5910,9 @@ until it equals the JSON literal; a miss fails naming the last value.
 `clock settle` also runs the clock to where the last running finite, unpaused
 transition or animation ends, firing the timers due on the way, so a test on a timer's grid moves with it,
 and on past a task due a commit later (`after(1, …)`, which an input or an answer armed) until none is.
-`clock data` lands it without moving the clock: the data module's activation and
+`clock data` takes clock ownership, including after `--timing platform`: it freezes
+platform timing at the current instant and leaves the clock held after the reply.
+It lands data without moving that clock: the data module's activation and
 every request in flight, each answer's `then` with it, no timer fired (its reply names a task
 due a commit later, which a tap next would come before: `clock settle` runs it). A CLI drive's
 first operation runs at boot and may come before that has landed (an authored test
@@ -6032,7 +6128,9 @@ a sheet's dismissal, the pushed route popped; a refusal is a note, nothing to
 go back from fails),
 `screenshot "file"`, `expect tree has|missing "id"`, `expect disabled|enabled "id"` (a control's
 `disabled`; a `tap` on a disabled one fails its step on every host), `expect focused "id"` (the
-node holding the keyboard focus), `expect text "id" == "…"`
+node holding the keyboard focus), `expect layout "id" width|height ==|<=|>= n` (its laid-out
+size in points, from the box `layout <target>` prints: `expect layout "status-mark" height <= 24`
+fails for a glyph a column stretched), `expect text "id" == "…"`
 (the node's text; a control's value, so a `select` reads its chosen value, not its
 options, and a checkbox with a `checked` binding `true` or `false`; else its descendants' — a button's label — else a field's value), and
 `expect state name == <number|string|bool|none|[]>`, where `name` may go on into

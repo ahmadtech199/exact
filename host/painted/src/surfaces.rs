@@ -573,6 +573,19 @@ impl Surfaces {
         compat: &str,
         assets: &crate::image::Assets,
     ) -> bool {
+        for c in self.canvases.values_mut() {
+            let enabled = c.owner && host.runner().wants_canvas_performance(&c.name);
+            if enabled != c.performance {
+                c.performance = enabled;
+                self.abis[&c.artifact].set_performance(c.id, enabled);
+            }
+        }
+        if self.canvases.values().any(|c| c.performance) {
+            self.performance_due
+                .get_or_insert_with(std::time::Instant::now);
+        } else {
+            self.performance_due = None;
+        }
         let mut changed = self.forward_owed(host);
         let dead: Vec<_> = self
             .canvases
@@ -685,7 +698,7 @@ impl Surfaces {
                 let owner = !self.canvases.values().any(|c| c.name == update.name);
                 let performance = owner && host.runner().wants_canvas_performance(&update.name);
                 if performance {
-                    abi.enable_performance(id);
+                    abi.set_performance(id, true);
                     self.performance_due
                         .get_or_insert_with(std::time::Instant::now);
                 }
