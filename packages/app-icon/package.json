@@ -5,7 +5,6 @@
   "description": "The app's icon on the home screen, chosen among the alternate icons it ships.",
   "exports": {
     ".": "./exact.json",
-    "./apple": "./apple/exact.json",
-    "./android": "./android/exact.json"
+    "./apple": "./apple/exact.json"
   }
 }
