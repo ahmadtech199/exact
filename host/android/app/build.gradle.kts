@@ -99,6 +99,8 @@ android {
     sourceSets["main"].assets.directories.add(out.resolve("rust/assets").path)
     // The icon and banner agent-android.mjs makes from the manifest's `icons` (LLP 1163 D6).
     sourceSets["main"].res.directories.add(out.resolve("icons/res").path)
+    // The alternate launcher icons of `@exact/app-icon` (agent-android.mjs `androidAlternateIcons`).
+    sourceSets["main"].res.directories.add(out.resolve("icons-alt/res").path)
     sourceSets["main"].res.directories.add(out.resolve("launch/res").path)
     // The notification channels, their strings and sounds, and the small icon, for an app that grants notifications
     // (agent-android.mjs `androidNotificationResources`, LLP 1133.004.000 D1, D3).

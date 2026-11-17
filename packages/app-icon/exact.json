@@ -1,0 +1,48 @@
+{
+  "kind": "interface",
+  "name": "@exact/app-icon",
+  "version": "1.0.0",
+  "substitute": "implementation",
+  "shapes": {
+    "AppIconStatus": {
+      "available": "bool",
+      "icon": "string"
+    }
+  },
+  "config": {
+    "android": {
+      "icons": { "type": "object" }
+    }
+  },
+  "names": [
+    {
+      "source": "appIconStatus",
+      "answers": "AppIconStatus",
+      "substitute": {
+        "default": {
+          "available": false,
+          "icon": ""
+        }
+      }
+    },
+    {
+      "send": "setAppIcon",
+      "request": true,
+      "origin": "app",
+      "foreground": true,
+      "options": {
+        "icon": "string"
+      },
+      "answers": "AppIconStatus",
+      "substitute": {
+        "unsupported": [
+          "web",
+          "linux",
+          "windows",
+          "tvos",
+          "macos"
+        ]
+      }
+    }
+  ]
+}
