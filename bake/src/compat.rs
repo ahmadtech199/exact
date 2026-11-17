@@ -818,6 +818,18 @@ fn compatibility_with_trust(
             }
         }
     }
+    // @ref LLP 1163.000 D2 — the alternate icons' names, in their order, are
+    // the iOS binary's: a plan never reaches a binary with another roster.
+    // Their art is the binary's alone, so it is not an input here.
+    if platform == "ios" {
+        let names: Vec<&str> = (manifest.json.get("alternate_icons"))
+            .and_then(Value::as_array)
+            .map(|items| items.iter().filter_map(|i| i["name"].as_str()).collect())
+            .unwrap_or_default();
+        if !names.is_empty() {
+            inputs["alternateIcons"] = json!(names);
+        }
+    }
     if platform != "web" {
         let base = manifest
             .json
@@ -1410,3 +1422,6 @@ mod file_handlers_tests;
 #[cfg(test)]
 #[path = "compat_watch_sync_tests.rs"]
 mod watch_sync_tests;
+#[cfg(test)]
+#[path = "compat_alternate_icons_tests.rs"]
+mod alternate_icons_tests;

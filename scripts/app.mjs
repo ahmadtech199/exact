@@ -641,7 +641,7 @@ export function webAppManifest(manifest, name, notes = [], dir = null) {
   web.lang ??= 'en';
   return web;
 }
-export function nativeManifestMetadata(manifest, platform) { return {app:manifest.app,host:manifest.host?.[platform]??{},icons:manifest.icons??[],...(platform === 'ios' && manifest.color_scheme_dark?.icons ? {dark_icons:manifest.color_scheme_dark.icons} : {}),...(manifest.frame_health ? {frame_health:manifest.frame_health} : {}),...(['macos','ios','android'].includes(platform) && manifest.protocol_handlers?.length ? {protocol_handlers:manifest.protocol_handlers} : {}),...(['ios','android'].includes(platform) && manifest.orientation ? {orientation:manifest.orientation} : {}),...(['macos','ios'].includes(platform) && ['light','dark'].includes(manifest.userInterfaceStyle) ? {userInterfaceStyle:manifest.userInterfaceStyle} : {}),...(['macos','ios'].includes(platform) && manifest.categories ? {categories:manifest.categories} : {}),...linkMetadata(manifest, platform)}; }
+export function nativeManifestMetadata(manifest, platform) { return {app:manifest.app,host:manifest.host?.[platform]??{},icons:manifest.icons??[],...(platform === 'ios' && manifest.color_scheme_dark?.icons ? {dark_icons:manifest.color_scheme_dark.icons} : {}),...(platform === 'ios' && manifest.alternate_icons?.length ? {alternate_icons:manifest.alternate_icons} : {}),...(manifest.frame_health ? {frame_health:manifest.frame_health} : {}),...(['macos','ios','android'].includes(platform) && manifest.protocol_handlers?.length ? {protocol_handlers:manifest.protocol_handlers} : {}),...(['ios','android'].includes(platform) && manifest.orientation ? {orientation:manifest.orientation} : {}),...(['macos','ios'].includes(platform) && ['light','dark'].includes(manifest.userInterfaceStyle) ? {userInterfaceStyle:manifest.userInterfaceStyle} : {}),...(['macos','ios'].includes(platform) && manifest.categories ? {categories:manifest.categories} : {}),...linkMetadata(manifest, platform)}; }
 /** The link claims a binary bakes in (LLP 1038 D8): Apple's derived `applinks:` as signed, so a changed scope alone
  * changes only the origin's file; each Android filter's host and path, so a changed scope is a new APK. */
 const linkMetadata = (manifest, platform) => {
@@ -1125,7 +1125,7 @@ function completeBuild(app, platform, target, graph, messages, roots, env, prepa
     }
   }
   const nativeResources = ['macos', 'ios'].includes(platform) ? nativeResourceInventory(app, null, platform) : []; // `host.<platform>.resources` (iOS's serve tvOS): an edit is a new binary
-  const assetCatalogApp = ['macos', 'ios'].includes(platform) ? { dir: app.dir, platform: target.includes('-tvos') ? 'tvos' : platform, appleIcons: bundleGraph.appleIcons ?? [], manifest: { host: app.manifest.host } } : null;
+  const assetCatalogApp = ['macos', 'ios'].includes(platform) ? { dir: app.dir, platform: target.includes('-tvos') ? 'tvos' : platform, appleIcons: bundleGraph.appleIcons ?? [], manifest: { host: app.manifest.host, alternate_icons: app.manifest.alternate_icons } } : null;
   const appleAssetCatalogs = assetCatalogApp ? appleAssetCatalogInventory(assetCatalogApp, assetCatalogApp.platform) : [];
   if (assetCatalogApp) for (const path of [resolve(app.dir, platform, 'modules'), resolve(app.dir, 'modules/apple')]) {
     if (existsSync(path)) directories.set(nameOf(path), {path, names: directoryInputNames(path, watchOutput(watchOutputs))});
