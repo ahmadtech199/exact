@@ -415,8 +415,8 @@ export function appleAssets(app, dir, { platform = 'macos', device = false, cata
         // The portable compiler (`car.mjs`, on Linux) draws each project's icon for older iOS from a PNG of its own icons.
         ...(platform === 'ios' && process.platform === 'linux' ? [[iconName, selected && app.manifest], ...alternates.map(alternate => [alternate.name, alternate.project && alternate.fragment.manifest])]
           .flatMap(([name, manifest]) => {
-            const fallback = manifest && (manifest.icons ?? []).find(icon => /^([0-9]+)x\1$/.test(icon.sizes ?? '') && Number(icon.sizes.split('x')[0]) >= 512 && icon.src?.toLowerCase().endsWith('.png'));
-            return fallback ? ['--exact-icon-fallback', `${name}=${resolve(app.dir, fallback.src)}`] : [];
+            const fallback = manifest && composerFallback(manifest, app.dir);
+            return fallback ? ['--exact-icon-fallback', `${name}=${fallback}`] : [];
           }) : []),
         ...alternates.flatMap(alternate => ['--alternate-app-icon', alternate.name]),
         ...(accent ? ['--accent-color', 'AccentColor'] : []),
@@ -439,6 +439,14 @@ export function appleAssets(app, dir, { platform = 'macos', device = false, cata
     }
     return keys;
   } finally { rmSync(work, { recursive: true, force: true }); }
+}
+
+/** The PNG an Icon Composer project's icon is drawn from for older iOS by the portable compiler
+ * (`car.mjs`, `--exact-icon-fallback`): the square `maskable`, else `any`, PNG of `manifest`'s
+ * icons (the app's, or an alternate's fragment) of at least 512 px, its size read from the file
+ * as every slot's is. Null when there is none. */
+export function composerFallback(manifest, dir) {
+  return pickIcon(manifest, dir, { purposes: ['maskable', 'any'], px: 512, formats: ['png'], native: true, name: 'the older-iOS fallback' })?.path ?? null;
 }
 
 /** The launch screen in the app's own background, light and dark

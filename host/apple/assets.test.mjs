@@ -4,9 +4,10 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writ
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { appleAssets, appleAssetCatalogInventory, appleRefusals, rasterIconAssets, iosAssets, iosExecutableRefusal, nativeResourceMappings, plistFile, RESERVED_RESOURCE_ROOTS } from './assets.mjs';
+import { appleAssets, appleAssetCatalogInventory, appleRefusals, composerFallback, rasterIconAssets, iosAssets, iosExecutableRefusal, nativeResourceMappings, plistFile, RESERVED_RESOURCE_ROOTS } from './assets.mjs';
 import { pngPixels } from './image.mjs';
 import { encodePng } from '../../scripts/png.mjs';
+import { alternateIcons } from '../../scripts/app-icons.mjs';
 import { useXcode } from './devices.mjs';
 
 test.skipIf(process.platform !== 'darwin')('SVG icon catalogs include independent vector renditions and invalidate on an edit', () => {
@@ -156,3 +157,18 @@ test.skipIf(process.platform !== 'darwin')('alternate icons are the declared ros
     assert.throws(() => iosAssets(app([paper, night, card]), dir, false), /did not compile the alternate icon Card/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 120_000);
+
+test("the portable compiler's fallback for a project is the icons' own square PNG, its size read from the file", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), 'exact-composer-fallback-'));
+  try {
+    const square = (src, side) => { mkdirSync(resolve(dir, 'assets'), { recursive: true }); writeFileSync(resolve(dir, src), encodePng({ width: side, height: side, data: new Uint8Array(side * side * 4).fill(255) })); };
+    square('assets/paper.png', 1024);
+    square('assets/glyph.png', 1024);
+    square('assets/small.png', 256);
+    // No `sizes` written, as an alternate's icons may be (LLP 1163 D1).
+    const [paper] = alternateIcons({ alternate_icons: [{ name: 'Paper', icons: [{ src: 'assets/glyph.png', purpose: 'monochrome' }, { src: 'assets/paper.png' }], host: { ios: { icon: 'Paper.icon' } } }] });
+    assert.equal(composerFallback(paper.manifest, dir), resolve(dir, 'assets/paper.png'));
+    assert.equal(composerFallback({ icons: [{ src: 'assets/glyph.png', purpose: 'monochrome' }] }, dir), null);
+    assert.throws(() => composerFallback({ icons: [{ src: 'assets/small.png' }] }, dir), /256×256 px, and the older-iOS fallback needs at least 512 px/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
